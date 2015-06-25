@@ -1,4 +1,3 @@
-
 #ifndef SMALLFOLK_H
 #define SMALLFOLK_H
 
@@ -8,62 +7,14 @@
 #include <sstream>
 #include <map>
 #include <unordered_map>
-// #include <cmath>
+#include <cmath>
 #include <memory>
 #include <cassert>
 #include <functional>
+#include <exception>
+#include <stdarg.h>
 
-#include <stdint.h>
-
-typedef int64_t int64;
-typedef int32_t int32;
-typedef int16_t int16;
-typedef int8_t int8;
-typedef uint64_t uint64;
-typedef uint32_t uint32;
-typedef uint16_t uint16;
-typedef uint8_t uint8;
-
-static std::string escape_quotes(const std::string &before)
-{
-    std::string after;
-    after.reserve(before.length() + 4);
-
-    for (std::string::size_type i = 0; i < before.length(); ++i)
-    {
-        switch (before[i])
-        {
-            case '"':
-                after += '"'; // no break
-            default:
-                after += before[i];
-        }
-    }
-
-    return after;
-}
-
-static std::string unescape_quotes(const std::string &before)
-{
-    std::string after;
-    after.reserve(before.length());
-
-    for (std::string::size_type i = 0; i < before.length(); ++i)
-    {
-        switch (before[i])
-        {
-            case '"':
-                if (i + 1 < before.length() && before[i + 1] == '"')
-                    ++i;
-            default:
-                after += before[i];
-        }
-    }
-
-    return after;
-}
-
-enum TTT
+enum LuaTypeTag
 {
     TNIL,
     TSTRING,
@@ -72,72 +23,96 @@ enum TTT
     TBOOL,
 };
 
-class TT
+class LuaVal
 {
 public:
 
-    static TT const & nil()
+    class smallfolk_exception : public std::exception
     {
-        static TT const nil;
+    public:
+        static size_t const size = 2048;
+
+        smallfolk_exception(const char * format, ...) : std::exception()
+        {
+            char buffer[size];
+            va_list args;
+            va_start(args, format);
+            vsnprintf_s(buffer, size, format, args);
+            errmsg = buffer;
+            va_end(args);
+        }
+
+        virtual const char* what() const throw()
+        {
+            return errmsg.c_str();
+        }
+
+        std::string errmsg;
+    };
+
+    // static nil value, same as LuaVal();
+    static LuaVal const & nil()
+    {
+        static LuaVal const nil;
         return nil;
     }
 
+    // returns the string representation of the value info
     std::string const & tostring() const
     {
         return tostr;
     }
 
-    static struct hash_tt
+    static struct LuaValHasher
     {
-        size_t operator()(TT const& v) const
+        size_t operator()(LuaVal const& v) const
         {
             return std::hash<std::string>()(v.tostring());
         }
     };
 
-    //typedef std::map< int64, TT > MARR;
-    //typedef std::shared_ptr< MARR > ARR;
-    // std::hash<std::unique_ptr<TT>>
-    typedef std::unordered_map< TT, TT, hash_tt> MHASHTBL;
-    typedef std::shared_ptr< MHASHTBL > HASHTBL;
-    typedef std::unordered_map<HASHTBL, size_t> MEMO;
-    typedef std::stringstream ACC;
+    typedef std::unordered_map< LuaVal, LuaVal, LuaValHasher> HashTable;
+    typedef std::shared_ptr< HashTable > LuaTable;
 
-    TT(TTT tag) : tag(tag), hash_table(tag == TTABLE ? new TT::MHASHTBL : nullptr), d(0), b(false)
+    LuaVal(LuaTypeTag tag) : tag(tag), hash_table(tag == TTABLE ? new HashTable : nullptr), d(0), b(false)
     {
+        if (istable() && !hash_table)
+            throw smallfolk_exception("creating table LuaVal with nullptr table");
         makestr();
     }
 
-    TT() : tag(TNIL), hash_table(nullptr), d(0), b(false)
+    LuaVal() : tag(TNIL), hash_table(nullptr), d(0), b(false)
     {
         makestr();
     }
-    TT(double d) : tag(TNUMBER), hash_table(nullptr), d(d), b(false)
+    LuaVal(double d) : tag(TNUMBER), hash_table(nullptr), d(d), b(false)
     {
         makestr();
     }
-    TT(int32 d) : tag(TNUMBER), hash_table(nullptr), d(d), b(false)
+    LuaVal(int32_t d) : tag(TNUMBER), hash_table(nullptr), d(d), b(false)
     {
         makestr();
     }
-    TT(uint32 d) : tag(TNUMBER), hash_table(nullptr), d(d), b(false)
+    LuaVal(uint32_t d) : tag(TNUMBER), hash_table(nullptr), d(d), b(false)
     {
         makestr();
     }
-    TT(std::string const & s) : tag(TSTRING), hash_table(nullptr), s(s), d(0), b(false)
+    LuaVal(std::string const & s) : tag(TSTRING), hash_table(nullptr), s(s), d(0), b(false)
     {
         makestr();
     }
-    TT(const char* s) : tag(TSTRING), hash_table(nullptr), s(s), d(0), b(false)
+    LuaVal(const char* s) : tag(TSTRING), hash_table(nullptr), s(s), d(0), b(false)
     {
         makestr();
     }
-    TT(bool b) : tag(TBOOL), hash_table(nullptr), b(b), d(0)
+    LuaVal(bool b) : tag(TBOOL), hash_table(nullptr), b(b), d(0)
     {
         makestr();
     }
-    TT(HASHTBL arr) : tag(TTABLE), hash_table(arr), d(0), b(false)
+    LuaVal(LuaTable hashtable) : tag(TTABLE), hash_table(hashtable), d(0), b(false)
     {
+        if (!hash_table)
+            throw smallfolk_exception("creating table LuaVal with nullptr table");
         makestr();
     }
 
@@ -147,62 +122,135 @@ public:
     bool isbool() const { return tag == TBOOL; }
     bool isnil() const { return tag == TNIL; }
 
-    // settable
-    void set(TT const & k, TT const & v)
+    // create a LuaTable (same as LuaTable(new HashTable());)
+    static LuaTable makeluatable()
     {
-        assert(istable());
-        MHASHTBL & tbl = (*hash_table);
+        return LuaTable(new HashTable());
+    }
+
+    // create a table (same as LuaVal(TTABLE);)
+    static LuaVal maketable(LuaTable arr = LuaTable(new HashTable()))
+    {
+        return LuaVal(arr);
+    }
+
+    // settable
+    void set(LuaVal const & k, LuaVal const & v)
+    {
+        if (!istable())
+            throw smallfolk_exception("using set on non table object");
+        HashTable & tbl = (*hash_table);
         tbl[k] = v;
     }
 
     // gettable
-    TT get(TT const & k)
+    LuaVal get(LuaVal const & k)
     {
-        assert(istable());
-        MHASHTBL & tbl = (*hash_table);
+        if (!istable())
+            throw smallfolk_exception("using get on non table object");
+        HashTable & tbl = (*hash_table);
         auto it = tbl.find(k);
         if (it != tbl.end())
             return it->second;
         return nil();
     }
 
+    // get a number value
     double num() const
     {
-        assert(isnumber());
+        if (!isnumber())
+            throw smallfolk_exception("using num on non number object");
         return d;
     }
+    // get a string value
     std::string str() const
     {
-        assert(isstring());
+        if (!isstring())
+            throw smallfolk_exception("using str on non string object");
         return s;
     }
+    // get a cstring value
     const char* cstr() const
     {
-        assert(isstring());
+        if (!isstring())
+            throw smallfolk_exception("using cstr on non string object");
         return s.c_str();
     }
+    // get a boolean value
     bool boolean() const
     {
-        assert(isbool());
+        if (!isbool())
+            throw smallfolk_exception("using boolean on non bool object");
         return b;
     }
-    TT::HASHTBL tbl() const
+    // get a table value
+    LuaVal::LuaTable tbl() const
     {
-        assert(istable());
+        if (!istable())
+            throw smallfolk_exception("using tbl on non table object");
         return hash_table;
     }
 
-    std::string dumps() const
+    // serializes the value into string
+    // errmsg is optional value to output error message to on failure
+    std::string dumps(std::string* errmsg = nullptr) const
     {
-        ACC acc;
-        acc << std::setprecision(17); // min lua percision
-        size_t nmemo = 0;
-        MEMO memo;
-        dump_object(*this, nmemo, memo, acc);
-        return acc.str();
+        try
+        {
+            ACC acc;
+            acc << std::setprecision(17); // min lua percision
+            size_t nmemo = 0;
+            MEMO memo;
+            dump_object(*this, nmemo, memo, acc);
+            return acc.str();
+        }
+        catch (std::exception& e)
+        {
+            if (errmsg)
+            {
+                *errmsg += "Smallfolk_cpp error: ";
+                *errmsg += e.what();
+            }
+        }
+        catch (...)
+        {
+            if (errmsg)
+                *errmsg += "Smallfolk_cpp error";
+        }
+        return std::string();
     }
 
-    bool operator==(TT const& rhs) const
+    // deserialize a string into a LuaVal
+    // string param is deserialized string
+    // errmsg is optional value to output error message to on failure
+    // maxsize is optional max length for the deserialized string
+    static LuaVal loads(std::string const & string, std::string* errmsg = nullptr, size_t maxsize = 10000)
+    {
+        try
+        {
+            if (string.length() > maxsize)
+                return LuaVal::nil();
+            TABLES tables;
+            size_t i = 0;
+            return expect_object(string, i, tables);
+        }
+        catch (std::exception& e)
+        {
+            if (errmsg)
+            {
+                *errmsg += "Smallfolk_cpp error: ";
+                *errmsg += e.what();
+            }
+        }
+        catch (...)
+        {
+            if (errmsg)
+                *errmsg += "Smallfolk_cpp error";
+        }
+        return LuaVal::nil();
+    }
+
+    bool operator==(LuaVal const& rhs) const
     {
         if (tag != rhs.tag)
             return false;
@@ -219,24 +267,27 @@ public:
             case TTABLE:
                 return hash_table == rhs.hash_table;
             default:
-                assert(false);
+                throw smallfolk_exception("operator== invalid or unhandled tag %i", tag);
         }
         return false;
     }
 
-    bool operator!=(TT const& rhs) const
+    bool operator!=(LuaVal const& rhs) const
     {
         return !(*this == rhs);
     }
 
 private:
+    typedef std::vector<LuaVal::LuaTable> TABLES;
+    typedef std::unordered_map<LuaTable, size_t> MEMO;
+    typedef std::stringstream ACC;
 
-    TTT tag;
+    LuaTypeTag tag;
 
-    HASHTBL hash_table;
+    LuaTable hash_table;
     std::string tostr;
     std::string s;
-    // int64 i; // lua 5.3 support?
+    // int64_t i; // lua 5.3 support?
     double d;
     bool b;
 
@@ -261,14 +312,16 @@ private:
                 oss << hash_table;
                 break;
             default:
-                assert(false);
+                throw smallfolk_exception("makestr invalid or unhandled tag %i", tag);
+                break;
         }
         tostr = oss.str();
     }
 
-    size_t dump_type_table(TT const & object, size_t nmemo, MEMO& memo, ACC& acc) const
+    static size_t dump_type_table(LuaVal const & object, size_t nmemo, MEMO& memo, ACC& acc)
     {
-        assert(object.istable());
+        if (!object.istable())
+            throw smallfolk_exception("using dump_type_table on non table object");
 
         auto it = memo.find(object.hash_table);
         if (it != memo.end())
@@ -290,7 +343,7 @@ private:
             }
         }
         std::string l = acc.str();
-        char c = l[l.length() - 1]; // unsafe?
+        char c = strat(l, l.length() - 1);
         if (c != '{')
         {
             // remove last char
@@ -303,7 +356,7 @@ private:
         return nmemo;
     }
 
-    size_t dump_object(TT const & object, size_t nmemo, MEMO& memo, ACC& acc) const
+    static size_t dump_object(LuaVal const & object, size_t nmemo, MEMO& memo, ACC& acc)
     {
         switch (object.tag)
         {
@@ -343,235 +396,256 @@ private:
                 return dump_type_table(object, nmemo, memo, acc);
                 break;
             default:
-                assert(false);
+                throw smallfolk_exception("dump_object invalid or unhandled tag %i", object.tag);
                 break;
         }
         return nmemo;
     }
-};
 
-bool nonzero_digit(char c)
-{
-    switch (c)
+    static std::string escape_quotes(const std::string &before)
     {
-        case '1':
-        case '2':
-        case '3':
-        case '4':
-        case '5':
-        case '6':
-        case '7':
-        case '8':
-        case '9':
-            return true;
-    }
-    return false;
-}
+        std::string after;
+        after.reserve(before.length() + 4);
 
-bool is_digit(char c)
-{
-    switch (c)
-    {
-        case '0':
-        case '1':
-        case '2':
-        case '3':
-        case '4':
-        case '5':
-        case '6':
-        case '7':
-        case '8':
-        case '9':
-            return true;
-    }
-    return false;
-}
-
-static char strat(std::string const & string, std::string::size_type i)
-{
-    if (i != std::string::npos &&
-        i < string.length() &&
-        i >= 0)
-        return string.at(i);
-    return '\0';
-}
-
-TT expect_number(std::string const & string, size_t& start)
-{
-    size_t i = start;
-    // IF i > strlen -> ERR
-    char head = strat(string, i);
-    if (head == '-')
-        head = strat(string, ++i);
-    if (nonzero_digit(head))
-    {
-        do
+        for (std::string::size_type i = 0; i < before.length(); ++i)
         {
-            head = strat(string, ++i);
-        } while (is_digit(head));
-    }
-    else if (head == '0')
-        head = strat(string, ++i);
-    else
-        assert(false);
-    if (head == '.')
-    {
-        size_t oldi = i;
-        do
-        {
-            head = strat(string, ++i);
-        } while (is_digit(head));
-        if (i == oldi + 1)
-            assert(false);
-    }
-    if (head == 'e' || head == 'E')
-    {
-        head = strat(string, ++i);
-        if (head == '+' || head == '-')
-            head = strat(string, ++i);
-        if (!is_digit(head))
-            assert(false);
-        do
-        {
-            head = strat(string, ++i);
-        } while (is_digit(head));
-    }
-    size_t temp = start;
-    start = i;
-    return std::atof(string.substr(temp, i).c_str());
-}
+            switch (before[i])
+            {
+                case '"':
+                    after += '"'; // no break
+                default:
+                    after += before[i];
+            }
+        }
 
-typedef std::vector<TT::HASHTBL> TABLES;
+        return after;
+    }
 
-TT expect_object(std::string const & string, size_t& i, TABLES& tables)
-{
-    static double _zero = 0.0;
-
-    // IF i > strlen -> ERR
-    char cc = strat(string, i++);
-    switch (cc)
+    static std::string unescape_quotes(const std::string &before)
     {
-        case 't':
-            return true;
-        case 'f':
-            return false;
-        case 'n':
-            return TT::nil();
-        case 'Q':
-            return -(0 / _zero);
-        case 'N':
-            return (0 / _zero);
-        case 'I':
-            return (1 / _zero);
-        case 'i':
-            return -(1 / _zero);
-        case '"':
+        std::string after;
+        after.reserve(before.length());
+
+        for (std::string::size_type i = 0; i < before.length(); ++i)
         {
-            size_t nexti = i - 1;
+            switch (before[i])
+            {
+                case '"':
+                    if (i + 1 < before.length() && before[i + 1] == '"')
+                        ++i;
+                default:
+                    after += before[i];
+            }
+        }
+
+        return after;
+    }
+
+    static bool nonzero_digit(char c)
+    {
+        switch (c)
+        {
+            case '1':
+            case '2':
+            case '3':
+            case '4':
+            case '5':
+            case '6':
+            case '7':
+            case '8':
+            case '9':
+                return true;
+        }
+        return false;
+    }
+
+    static bool is_digit(char c)
+    {
+        switch (c)
+        {
+            case '0':
+            case '1':
+            case '2':
+            case '3':
+            case '4':
+            case '5':
+            case '6':
+            case '7':
+            case '8':
+            case '9':
+                return true;
+        }
+        return false;
+    }
+
+    static char strat(std::string const & string, std::string::size_type i)
+    {
+        if (i != std::string::npos &&
+            i < string.length() &&
+            i >= 0)
+            return string.at(i);
+        return '\0'; // bad?
+    }
+
+    static LuaVal expect_number(std::string const & string, size_t& start)
+    {
+        size_t i = start;
+        char head = strat(string, i);
+        if (head == '-')
+            head = strat(string, ++i);
+        if (nonzero_digit(head))
+        {
             do
             {
-                nexti = string.find('"', nexti + 1);
-                if (nexti == std::string::npos)
-                {
-                    // ERROR
-                    assert(false);
-                }
-                ++nexti;
-            } while (strat(string, nexti) == '"');
-            size_t temp = i;
-            i = nexti;
-            return unescape_quotes(string.substr(temp, nexti - temp - 1));
+                head = strat(string, ++i);
+            } while (is_digit(head));
         }
-        case '0':
-        case '1':
-        case '2':
-        case '3':
-        case '4':
-        case '5':
-        case '6':
-        case '7':
-        case '8':
-        case '9':
-        case '-':
-        case '.':
-            return expect_number(string, --i);
-        case '{':
+        else if (head == '0')
+            head = strat(string, ++i);
+        else
+            throw smallfolk_exception("expect_number at %u unexpected character %c", i, head);
+        if (head == '.')
         {
-            TT nt(TTABLE);
-            size_t j = 1;
-            tables.push_back(nt.tbl());
-            // IF i > strlen -> ERR
-            if (strat(string, i) == '}')
+            size_t oldi = i;
+            do
             {
-                ++i;
-                return nt;
+                head = strat(string, ++i);
+            } while (is_digit(head));
+            if (i == oldi + 1)
+                throw smallfolk_exception("expect_number at %u no numbers after decimal", i);
+        }
+        if (head == 'e' || head == 'E')
+        {
+            head = strat(string, ++i);
+            if (head == '+' || head == '-')
+                head = strat(string, ++i);
+            if (!is_digit(head))
+                throw smallfolk_exception("expect_number at %u not a digit part %c", i, head);
+            do
+            {
+                head = strat(string, ++i);
+            } while (is_digit(head));
+        }
+        size_t temp = start;
+        start = i;
+        return std::atof(string.substr(temp, i).c_str());
+    }
+
+    static LuaVal expect_object(std::string const & string, size_t& i, TABLES& tables)
+    {
+        static double _zero = 0.0;
+
+        char cc = strat(string, i++);
+        switch (cc)
+        {
+            case 't':
+                return true;
+            case 'f':
+                return false;
+            case 'n':
+                return LuaVal::nil();
+            case 'Q':
+                return -(0 / _zero);
+            case 'N':
+                return (0 / _zero);
+            case 'I':
+                return (1 / _zero);
+            case 'i':
+                return -(1 / _zero);
+            case '"':
+            {
+                size_t nexti = i - 1;
+                do
+                {
+                    nexti = string.find('"', nexti + 1);
+                    if (nexti == std::string::npos)
+                    {
+                        throw smallfolk_exception("expect_object at %u was %c eof before string ends", i, cc);
+                    }
+                    ++nexti;
+                } while (strat(string, nexti) == '"');
+                size_t temp = i;
+                i = nexti;
+                return unescape_quotes(string.substr(temp, nexti - temp - 1));
             }
-            while (true)
+            case '0':
+            case '1':
+            case '2':
+            case '3':
+            case '4':
+            case '5':
+            case '6':
+            case '7':
+            case '8':
+            case '9':
+            case '-':
+            case '.':
+                return expect_number(string, --i);
+            case '{':
             {
-                TT k = expect_object(string, i, tables);
-                // IF i > strlen -> ERR
-                if (strat(string, i) == ':')
-                {
-                    TT v = expect_object(string, ++i, tables);
-                    nt.set(k, v);
-                }
-                else
-                {
-                    nt.set(j, k);
-                    ++j;
-                }
-                // IF i > strlen -> ERR
-                char head = strat(string, i);
-                if (head == ',')
-                    ++i;
-                else if (head == '}')
+                LuaVal nt(TTABLE);
+                size_t j = 1;
+                tables.push_back(nt.tbl());
+                if (strat(string, i) == '}')
                 {
                     ++i;
                     return nt;
                 }
-                else
+                while (true)
                 {
-                    // ERROR at i
-                    assert(false);
+                    LuaVal k = expect_object(string, i, tables);
+                    if (strat(string, i) == ':')
+                    {
+                        LuaVal v = expect_object(string, ++i, tables);
+                        nt.set(k, v);
+                    }
+                    else
+                    {
+                        nt.set(j, k);
+                        ++j;
+                    }
+                    char head = strat(string, i);
+                    if (head == ',')
+                        ++i;
+                    else if (head == '}')
+                    {
+                        ++i;
+                        return nt;
+                    }
+                    else
+                    {
+                        throw smallfolk_exception("expect_object at %u was %c unexpected character %c", i, cc, head);
+                    }
                 }
+                break;
             }
-            break;
-        }
-        case '@':
-        {
-            std::string::size_type x = i;
-            for (; x < string.length(); ++x)
+            case '@':
             {
-                if (!isdigit(string[x]))
-                    break;
+                std::string::size_type x = i;
+                for (; x < string.length(); ++x)
+                {
+                    if (!isdigit(string[x]))
+                        break;
+                }
+                std::string substr = string.substr(i, x - i);
+                size_t index = std::stoul(substr.c_str());
+                if (index >= 1 && index <= tables.size())
+                {
+                    i += substr.length();
+                    return tables[index - 1];
+                }
+
+                throw smallfolk_exception("expect_object at %u was %c invalid index %u", i, cc, index);
+                break;
             }
-            std::string substr = string.substr(i, x - i);
-            size_t index = std::stoul(substr.c_str());
-            if (index >= 1 && index <= tables.size())
+            default:
             {
-                i += substr.length();
-                return tables[index - 1];
+                throw smallfolk_exception("expect_object at %u was %c", i, cc);
+                break;
             }
-            // ERROR at i
-            assert(false);
         }
-        default:
-        {
-            // ERROR at i
-            assert(false);
-            break;
-        }
+        return LuaVal::nil();
     }
-    return TT::nil();
-}
+};
 
-TT loads(std::string const & string, size_t maxsize = 10000)
-{
-    if (string.length() > maxsize)
-        return TT::nil();
-    TABLES tables;
-    size_t i = 0;
-    return expect_object(string, i, tables);
-}
-
-#endif
+##endif
