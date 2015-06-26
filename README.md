@@ -44,11 +44,14 @@ Robust
 #include smallfolk.h
 
 // Essentially {{},{},{}}
-LuaVal cthulhu = LuaVal(TTABLE).set(1, LuaVal(TTABLE)).set(2, LuaVal(TTABLE)).set(3, LuaVal(TTABLE));
-cthulhu.set("fhtagn", cthulhu);
-cthulhu.get(1).set(cthulhu.get(2), cthulhu.get(3));
-cthulhu.get(2).set(cthulhu.get(1), cthulhu.get(2));
-cthulhu.get(3).set(cthulhu.get(3), cthulhu);
+LuaVal cthulhu(TTABLE);
+cthulhu[1] = LuaVal(TTABLE);
+cthulhu[2] = LuaVal(TTABLE);
+cthulhu[3] = LuaVal(TTABLE);
+cthulhu["fhtagn"] = cthulhu;
+cthulhu[1][cthulhu[2]] = cthulhu[3];
+cthulhu[2][cthulhu[1]] = cthulhu[2];
+cthulhu[3][cthulhu[3]] = cthulhu;
 std::cout << cthulhu.dumps() << std::endl;
 // prints:
 // {"fhtagn":@1,1:{{@2:@3}:{@4:@1}},2:@3,3:@4}
