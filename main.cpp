@@ -53,6 +53,7 @@ int main()
     // on error a LuaVal::nil() is returned. can catch error messages like this:
     std::string errmsg;
     LuaVal ld = LuaVal::loads("", &errmsg);
-    std::cout << (errmsg) << std::endl;
+    if (!errmsg.empty())
+        std::cout << (errmsg) << std::endl;
     return 0;
 }
