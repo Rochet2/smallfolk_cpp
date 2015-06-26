@@ -13,6 +13,7 @@
 #include <functional>
 #include <exception>
 #include <stdarg.h>
+#include <stdio.h>
 
 class smallfolk_exception : public std::exception
 {
@@ -63,24 +64,18 @@ public:
         switch (tag)
         {
             case TBOOL:
-                return std::to_string(b);
+                if (b)
+                    return "1";
+                else
+                    return "0";
             case TNIL:
                 return "nil";
             case TSTRING:
                 return s;
             case TNUMBER:
-            {
-                std::ostringstream oss;
-                oss << d;
-                return oss.str();
-                // return std::to_string(d); // doesnt output division errors correctly
-            }
+                return tostring(d);
             case TTABLE:
-            {
-                std::ostringstream oss;
-                oss << "table: " << hash_table;
-                return oss.str();
-            }
+                return tostring(hash_table);
             default:
                 break;
         }
@@ -379,6 +374,20 @@ private:
         hash_val = std::hash<std::string>()(tostring());
     }
 
+    // sprintf is ~50% faster than other solutions
+    static std::string tostring(const double d)
+    {
+        char arr[128];
+        sprintf_s(arr, "%.17g", d);
+        return arr;
+    }
+    static std::string tostring(LuaTable ptr)
+    {
+        char arr[128];
+        sprintf_s(arr, "table: %p", ptr);
+        return arr;
+    }
+
     static size_t dump_type_table(LuaVal const & object, size_t nmemo, MEMO& memo, ACC& acc)
     {
         if (!object.istable())
@@ -436,10 +445,7 @@ private:
                 if (!isfinite(object.d))
                 {
                     // slightly ugly :(
-                    std::ostringstream oss;
-                    oss << object.d;
-                    std::string nn = oss.str();
-
+                    std::string nn = tostring(object.d);
                     if (nn == "1.#INF")
                         acc << 'I';
                     else if (nn == "-1.#INF")
