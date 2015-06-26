@@ -14,6 +14,29 @@
 #include <exception>
 #include <stdarg.h>
 
+class smallfolk_exception : public std::exception
+{
+public:
+    static size_t const size = 2048;
+
+    smallfolk_exception(const char * format, ...) : std::exception()
+    {
+        char buffer[size];
+        va_list args;
+        va_start(args, format);
+        vsnprintf_s(buffer, size, format, args);
+        errmsg = buffer;
+        va_end(args);
+    }
+
+    virtual const char* what() const throw()
+    {
+        return errmsg.c_str();
+    }
+
+    std::string errmsg;
+};
+
 enum LuaTypeTag
 {
     TNIL,
@@ -27,29 +50,6 @@ class LuaVal
 {
 public:
 
-    class smallfolk_exception : public std::exception
-    {
-    public:
-        static size_t const size = 2048;
-
-        smallfolk_exception(const char * format, ...) : std::exception()
-        {
-            char buffer[size];
-            va_list args;
-            va_start(args, format);
-            vsnprintf_s(buffer, size, format, args);
-            errmsg = buffer;
-            va_end(args);
-        }
-
-        virtual const char* what() const throw()
-        {
-            return errmsg.c_str();
-        }
-
-        std::string errmsg;
-    };
-
     // static nil value, same as LuaVal();
     static LuaVal const & nil()
     {
@@ -57,17 +57,43 @@ public:
         return nil;
     }
 
-    // returns the string representation of the value info
-    std::string const & tostring() const
+    // returns the string representation of the value info similar to lua tostring
+    std::string tostring() const
     {
-        return tostr;
+        switch (tag)
+        {
+            case TBOOL:
+                return std::to_string(b);
+            case TNIL:
+                return "nil";
+            case TSTRING:
+                return s;
+            case TNUMBER:
+                return std::to_string(d);
+            case TTABLE:
+            {
+                std::ostringstream oss;
+                oss << "table: " << hash_table;
+                return oss.str();
+            }
+            default:
+                break;
+        }
+        throw smallfolk_exception("tostring invalid or unhandled tag %i", tag);
+        return std::string();
+    }
+
+    // returns the string representation of the value info
+    size_t hash() const
+    {
+        return hash_val;
     }
 
     static struct LuaValHasher
     {
         size_t operator()(LuaVal const& v) const
         {
-            return std::hash<std::string>()(v.tostring());
+            return v.hash();
         }
     };
 
@@ -78,42 +104,42 @@ public:
     {
         if (istable() && !hash_table)
             throw smallfolk_exception("creating table LuaVal with nullptr table");
-        makestr();
+        makehash();
     }
 
     LuaVal() : tag(TNIL), hash_table(nullptr), d(0), b(false)
     {
-        makestr();
+        makehash();
     }
     LuaVal(double d) : tag(TNUMBER), hash_table(nullptr), d(d), b(false)
     {
-        makestr();
+        makehash();
     }
     LuaVal(int32_t d) : tag(TNUMBER), hash_table(nullptr), d(d), b(false)
     {
-        makestr();
+        makehash();
     }
     LuaVal(uint32_t d) : tag(TNUMBER), hash_table(nullptr), d(d), b(false)
     {
-        makestr();
+        makehash();
     }
     LuaVal(std::string const & s) : tag(TSTRING), hash_table(nullptr), s(s), d(0), b(false)
     {
-        makestr();
+        makehash();
     }
     LuaVal(const char* s) : tag(TSTRING), hash_table(nullptr), s(s), d(0), b(false)
     {
-        makestr();
+        makehash();
     }
     LuaVal(bool b) : tag(TBOOL), hash_table(nullptr), b(b), d(0)
     {
-        makestr();
+        makehash();
     }
     LuaVal(LuaTable hashtable) : tag(TTABLE), hash_table(hashtable), d(0), b(false)
     {
         if (!hash_table)
             throw smallfolk_exception("creating table LuaVal with nullptr table");
-        makestr();
+        makehash();
     }
 
     bool isstring() const { return tag == TSTRING; }
@@ -139,16 +165,49 @@ public:
     {
         if (!istable())
             throw smallfolk_exception("using set on non table object");
+        if (k.isnil()) // on nil key do nothing
+            return *this;
         HashTable & tbl = (*hash_table);
-        tbl[k] = v;
+        if (v.isnil()) // on nil value erase key
+            tbl.erase(k);
+        else
+            tbl[k] = v; // normally set pair
         return *this;
+    }
+    
+    // gettable - note, adds key-nil pair if not existing
+    // nil key throws error
+    LuaVal operator [](LuaVal const & k) const
+    {
+        if (!istable())
+            throw smallfolk_exception("using [] on non table object");
+        if (k.isnil())
+            throw smallfolk_exception("using [] with nil key");
+        if (k.isnil()) // on nil key do nothing
+            return nil();
+        HashTable & tbl = (*hash_table);
+        return tbl[k];
+    }
+
+    // get-set-table - note, adds key-nil pair if not existing
+    // nil key throws error
+    LuaVal & operator [](LuaVal const & k)
+    {
+        if (!istable())
+            throw smallfolk_exception("using [] on non table object");
+        if (k.isnil())
+            throw smallfolk_exception("using [] with nil key");
+        HashTable & tbl = (*hash_table);
+        return tbl[k];
     }
 
     // gettable
-    LuaVal get(LuaVal const & k)
+    LuaVal get(LuaVal const & k) const
     {
         if (!istable())
             throw smallfolk_exception("using get on non table object");
+        if (k.isnil()) // on nil key do nothing
+            return nil();
         HashTable & tbl = (*hash_table);
         auto it = tbl.find(k);
         if (it != tbl.end())
@@ -194,6 +253,7 @@ public:
 
     // serializes the value into string
     // errmsg is optional value to output error message to on failure
+    // returns empty string on error
     std::string dumps(std::string* errmsg = nullptr) const
     {
         try
@@ -278,6 +338,12 @@ public:
         return !(*this == rhs);
     }
 
+    // You can use !val to check for nil or false
+    explicit operator bool()
+    {
+        return !isnil() || (isbool() && boolean());
+    }
+
 private:
     typedef std::vector<LuaVal::LuaTable> TABLES;
     typedef std::unordered_map<LuaTable, size_t> MEMO;
@@ -286,37 +352,15 @@ private:
     LuaTypeTag tag;
 
     LuaTable hash_table;
-    std::string tostr;
+    size_t hash_val;
     std::string s;
     // int64_t i; // lua 5.3 support?
     double d;
     bool b;
 
-    void makestr()
+    void makehash()
     {
-        std::ostringstream oss;
-        oss << tag;
-        switch (tag)
-        {
-            case TBOOL:
-                oss << b;
-                break;
-            case TNIL:
-                break;
-            case TSTRING:
-                oss << s;
-                break;
-            case TNUMBER:
-                oss << d;
-                break;
-            case TTABLE:
-                oss << hash_table;
-                break;
-            default:
-                throw smallfolk_exception("makestr invalid or unhandled tag %i", tag);
-                break;
-        }
-        tostr = oss.str();
+        hash_val = std::hash<std::string>()(tostring());
     }
 
     static size_t dump_type_table(LuaVal const & object, size_t nmemo, MEMO& memo, ACC& acc)
