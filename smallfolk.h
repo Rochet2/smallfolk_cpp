@@ -134,13 +134,14 @@ public:
         return LuaVal(arr);
     }
 
-    // settable
-    void set(LuaVal const & k, LuaVal const & v)
+    // settable, return self
+    LuaVal set(LuaVal const & k, LuaVal const & v)
     {
         if (!istable())
             throw smallfolk_exception("using set on non table object");
         HashTable & tbl = (*hash_table);
         tbl[k] = v;
+        return *this;
     }
 
     // gettable
@@ -648,4 +649,4 @@ private:
     }
 };
 
-##endif
+#endif
