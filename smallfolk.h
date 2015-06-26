@@ -69,7 +69,12 @@ public:
             case TSTRING:
                 return s;
             case TNUMBER:
-                return std::to_string(d);
+            {
+                std::ostringstream oss;
+                oss << d;
+                return oss.str();
+                // return std::to_string(d); // doesnt output division errors correctly
+            }
             case TTABLE:
             {
                 std::ostringstream oss;
@@ -100,30 +105,41 @@ public:
     typedef std::unordered_map< LuaVal, LuaVal, LuaValHasher> HashTable;
     typedef std::shared_ptr< HashTable > LuaTable;
 
-    LuaVal(LuaTypeTag tag) : tag(tag), hash_table(tag == TTABLE ? new HashTable : nullptr), d(0), b(false)
+    LuaVal(const LuaTypeTag tag) : tag(tag), hash_table(tag == TTABLE ? new HashTable : nullptr), d(0), b(false)
     {
         if (istable() && !hash_table)
             throw smallfolk_exception("creating table LuaVal with nullptr table");
         makehash();
     }
-
     LuaVal() : tag(TNIL), hash_table(nullptr), d(0), b(false)
     {
         makehash();
     }
-    LuaVal(double d) : tag(TNUMBER), hash_table(nullptr), d(d), b(false)
+    LuaVal(const long d) : tag(TNUMBER), hash_table(nullptr), d(d), b(false)
     {
         makehash();
     }
-    LuaVal(int32_t d) : tag(TNUMBER), hash_table(nullptr), d(d), b(false)
+    LuaVal(const unsigned long d) : tag(TNUMBER), hash_table(nullptr), d(d), b(false)
     {
         makehash();
     }
-    LuaVal(uint32_t d) : tag(TNUMBER), hash_table(nullptr), d(d), b(false)
+    LuaVal(const int d) : tag(TNUMBER), hash_table(nullptr), d(d), b(false)
     {
         makehash();
     }
-    LuaVal(std::string const & s) : tag(TSTRING), hash_table(nullptr), s(s), d(0), b(false)
+    LuaVal(const unsigned int d) : tag(TNUMBER), hash_table(nullptr), d(d), b(false)
+    {
+        makehash();
+    }
+    LuaVal(const float d) : tag(TNUMBER), hash_table(nullptr), d(d), b(false)
+    {
+        makehash();
+    }
+    LuaVal(const double d) : tag(TNUMBER), hash_table(nullptr), d(d), b(false)
+    {
+        makehash();
+    }
+    LuaVal(const std::string& s) : tag(TSTRING), hash_table(nullptr), s(s), d(0), b(false)
     {
         makehash();
     }
@@ -131,7 +147,7 @@ public:
     {
         makehash();
     }
-    LuaVal(bool b) : tag(TBOOL), hash_table(nullptr), b(b), d(0)
+    LuaVal(const bool b) : tag(TBOOL), hash_table(nullptr), b(b), d(0)
     {
         makehash();
     }
@@ -423,13 +439,14 @@ private:
                     std::ostringstream oss;
                     oss << object.d;
                     std::string nn = oss.str();
-                    if (nn == "1#INF")
+
+                    if (nn == "1.#INF")
                         acc << 'I';
-                    else if (nn == "-1#INF")
+                    else if (nn == "-1.#INF")
                         acc << 'i';
-                    else if (nn == "1#IND")
+                    else if (nn == "1.#IND")
                         acc << 'i';
-                    else if (nn == "-1#IND")
+                    else if (nn == "-1.#IND")
                         acc << 'N';
                     else
                         acc << 'Q';
