@@ -652,7 +652,7 @@ private:
             case '{':
             {
                 LuaVal nt(TTABLE);
-                size_t j = 1;
+                unsigned int j = 1;
                 tables.push_back(nt.tbl());
                 if (strat(string, i) == '}')
                 {
