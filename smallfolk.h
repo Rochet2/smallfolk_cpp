@@ -98,9 +98,9 @@ public:
     };
 
     typedef std::unordered_map< LuaVal, LuaVal, LuaValHasher> HashTable;
-    typedef std::shared_ptr< HashTable > LuaTable;
+    typedef std::unique_ptr< HashTable > LuaTable; // circular reference memleak
 
-    LuaVal(const LuaTypeTag tag) : tag(tag), hash_table(tag == TTABLE ? new HashTable : nullptr), d(0), b(false)
+    LuaVal(const LuaTypeTag tag) : tag(tag), hash_table(tag == TTABLE ? std::make_unique<HashTable>() : nullptr), d(0), b(false)
     {
         if (istable() && !hash_table)
             throw smallfolk_exception("creating table LuaVal with nullptr table");
@@ -146,10 +146,19 @@ public:
     {
         makehash();
     }
-    LuaVal(LuaTable hashtable) : tag(TTABLE), hash_table(hashtable), d(0), b(false)
+    LuaVal(HashTable hashtable) : tag(TTABLE), hash_table(std::make_unique<HashTable>(hashtable)), d(0), b(false)
     {
         if (!hash_table)
             throw smallfolk_exception("creating table LuaVal with nullptr table");
+        makehash();
+    }
+    LuaVal(LuaVal const & val) : tag(val.tag), hash_table(val.tag == TTABLE ? std::make_unique<HashTable>(val.hash_table) : nullptr), s(val.s), d(val.d), b(val.b)
+    {
+        if (istable())
+        {
+            if (!hash_table)
+                throw smallfolk_exception("creating table LuaVal with nullptr table");
+        }
         makehash();
     }
 
@@ -159,14 +168,8 @@ public:
     bool isbool() const { return tag == TBOOL; }
     bool isnil() const { return tag == TNIL; }
 
-    // create a LuaTable (same as LuaTable(new HashTable());)
-    static LuaTable makeluatable()
-    {
-        return LuaTable(new HashTable());
-    }
-
     // create a table (same as LuaVal(TTABLE);)
-    static LuaVal maketable(LuaTable arr = LuaTable(new HashTable()))
+    static LuaVal table(HashTable arr = HashTable())
     {
         return LuaVal(arr);
     }
@@ -255,11 +258,11 @@ public:
         return b;
     }
     // get a table value
-    LuaTable tbl() const
+    HashTable tbl() const
     {
         if (!istable())
             throw smallfolk_exception("using tbl on non table object");
-        return hash_table;
+        return *hash_table.get();
     }
 
     // serializes the value into string
@@ -355,6 +358,24 @@ public:
         return !isnil() || (isbool() && boolean());
     }
 
+    LuaVal& operator=(LuaVal const& val)
+    {
+        tag = val.tag;
+        hash_table = val.tag == TTABLE ? std::make_unique<HashTable>(val.hash_table) : nullptr;
+        s = val.s;
+        d = val.d;
+        b = val.b;
+
+        if (istable())
+        {
+            if (!hash_table)
+                throw smallfolk_exception("creating table LuaVal with nullptr table");
+        }
+
+        makehash();
+        return *this;
+    }
+
 private:
     typedef std::vector<LuaVal> TABLES;
     typedef std::unordered_map<LuaVal, unsigned int, LuaValHasher> MEMO;
@@ -381,7 +402,7 @@ private:
         sprintf_s(arr, "%.17g", d);
         return arr;
     }
-    static std::string tostring(LuaTable ptr)
+    static std::string tostring(LuaTable const & ptr)
     {
         char arr[128];
         sprintf_s(arr, "table: %p", ptr);
@@ -393,6 +414,7 @@ private:
         if (!object.istable())
             throw smallfolk_exception("using dump_type_table on non table object");
 
+        /*
         auto it = memo.find(object);
         if (it != memo.end())
         {
@@ -400,6 +422,7 @@ private:
             return nmemo;
         }
         memo[object] = ++nmemo;
+        */
         acc << '{';
         std::map<unsigned int, const LuaVal*> arr;
         std::unordered_map<const LuaVal*, const LuaVal*> hash;
@@ -704,6 +727,7 @@ private:
                 }
                 break;
             }
+            /*
             case '@':
             {
                 std::string::size_type x = i;
@@ -723,6 +747,7 @@ private:
                 throw smallfolk_exception("expect_object at %u was %c invalid index %u", i, cc, index);
                 break;
             }
+            */
             default:
             {
                 throw smallfolk_exception("expect_object at %u was %c", i, cc);
