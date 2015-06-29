@@ -34,6 +34,9 @@ Its C++, duh!?
 Robust
 ------
 
+-- This feature was disabled cause of difficult implementing in C++ and possibly unwanted infinite cycles:
+-- All table self references are copies now.
+
 > Sometimes you have strange, non-euclidean geometries in your table
 > constructions. It happens, I don't judge. Smallfolk can deal with that, where
 > some other serialization libraries (or anything that produces JSON) cry "Iä!
