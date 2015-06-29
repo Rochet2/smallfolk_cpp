@@ -185,7 +185,7 @@ public:
             tbl[k] = v; // normally set pair
         return *this;
     }
-    
+
     // gettable - note, adds key-nil pair if not existing
     // nil key throws error
     LuaVal operator [](LuaVal const & k) const
@@ -255,7 +255,7 @@ public:
         return b;
     }
     // get a table value
-    LuaVal::LuaTable tbl() const
+    LuaTable tbl() const
     {
         if (!istable())
             throw smallfolk_exception("using tbl on non table object");
@@ -271,7 +271,7 @@ public:
         {
             ACC acc;
             acc << std::setprecision(17); // min lua percision
-            size_t nmemo = 0;
+            unsigned int nmemo = 0;
             MEMO memo;
             dump_object(*this, nmemo, memo, acc);
             return acc.str();
@@ -301,7 +301,7 @@ public:
         try
         {
             if (string.length() > maxsize)
-                return LuaVal::nil();
+                return nil();
             TABLES tables;
             size_t i = 0;
             return expect_object(string, i, tables);
@@ -319,7 +319,7 @@ public:
             if (errmsg)
                 *errmsg += "Smallfolk_cpp error";
         }
-        return LuaVal::nil();
+        return nil();
     }
 
     bool operator==(LuaVal const& rhs) const
@@ -356,8 +356,8 @@ public:
     }
 
 private:
-    typedef std::vector<LuaVal::LuaTable> TABLES;
-    typedef std::unordered_map<LuaTable, size_t> MEMO;
+    typedef std::vector<LuaVal> TABLES;
+    typedef std::unordered_map<LuaVal, unsigned int, LuaValHasher> MEMO;
     typedef std::stringstream ACC;
 
     LuaTypeTag tag;
@@ -388,29 +388,47 @@ private:
         return arr;
     }
 
-    static size_t dump_type_table(LuaVal const & object, size_t nmemo, MEMO& memo, ACC& acc)
+    static size_t dump_type_table(LuaVal const & object, unsigned int nmemo, MEMO& memo, ACC& acc)
     {
         if (!object.istable())
             throw smallfolk_exception("using dump_type_table on non table object");
 
-        auto it = memo.find(object.hash_table);
+        auto it = memo.find(object);
         if (it != memo.end())
         {
             acc << '@' << it->second;
             return nmemo;
         }
-        nmemo++;
-        memo[object.hash_table] = nmemo;
+        memo[object] = ++nmemo;
         acc << '{';
-        if (object.hash_table)
+        std::map<unsigned int, const LuaVal*> arr;
+        std::unordered_map<const LuaVal*, const LuaVal*> hash;
+        for (auto&& v : *object.hash_table)
         {
-            for (auto&& v : *object.hash_table)
+            if (v.first.isnumber() && v.first.num() >= 1 && std::floor(v.first.num()) == v.first.num())
+                arr[static_cast<unsigned int>(v.first.num())] = &v.second;
+            else
+                hash[&v.first] = &v.second;
+        }
+        unsigned int i = 1;
+        for (auto&& v : arr)
+        {
+            if (v.first != i)
             {
                 nmemo = dump_object(v.first, nmemo, memo, acc);
                 acc << ':';
-                nmemo = dump_object(v.second, nmemo, memo, acc);
-                acc << ',';
             }
+            else
+                ++i;
+            nmemo = dump_object(*v.second, nmemo, memo, acc);
+            acc << ',';
+        }
+        for (auto&& v : hash)
+        {
+            nmemo = dump_object(*v.first, nmemo, memo, acc);
+            acc << ':';
+            nmemo = dump_object(*v.second, nmemo, memo, acc);
+            acc << ',';
         }
         std::string l = acc.str();
         char c = strat(l, l.length() - 1);
@@ -426,7 +444,7 @@ private:
         return nmemo;
     }
 
-    static size_t dump_object(LuaVal const & object, size_t nmemo, MEMO& memo, ACC& acc)
+    static size_t dump_object(LuaVal const & object, unsigned int nmemo, MEMO& memo, ACC& acc)
     {
         switch (object.tag)
         {
@@ -611,7 +629,7 @@ private:
             case 'f':
                 return false;
             case 'n':
-                return LuaVal::nil();
+                return nil();
             case 'Q':
                 return -(0 / _zero);
             case 'N':
@@ -653,7 +671,7 @@ private:
             {
                 LuaVal nt(TTABLE);
                 unsigned int j = 1;
-                tables.push_back(nt.tbl());
+                tables.push_back(nt);
                 if (strat(string, i) == '}')
                 {
                     ++i;
@@ -664,8 +682,7 @@ private:
                     LuaVal k = expect_object(string, i, tables);
                     if (strat(string, i) == ':')
                     {
-                        LuaVal v = expect_object(string, ++i, tables);
-                        nt.set(k, v);
+                        nt.set(k, expect_object(string, ++i, tables));
                     }
                     else
                     {
@@ -712,7 +729,7 @@ private:
                 break;
             }
         }
-        return LuaVal::nil();
+        return nil();
     }
 };
 
