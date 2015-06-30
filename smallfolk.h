@@ -75,7 +75,7 @@ public:
             case TNUMBER:
                 return tostring(d);
             case TTABLE:
-                return tostring(hash_table);
+                return tostring(tbl_ptr);
             default:
                 break;
         }
@@ -97,66 +97,66 @@ public:
         }
     };
 
-    typedef std::unordered_map< LuaVal, LuaVal, LuaValHasher> HashTable;
-    typedef std::unique_ptr< HashTable > LuaTable; // circular reference memleak
+    typedef std::unordered_map< LuaVal, LuaVal, LuaValHasher> LuaTable;
+    typedef std::unique_ptr< LuaTable > TblPtr; // circular reference memleak if insert self to self
 
-    LuaVal(const LuaTypeTag tag) : tag(tag), hash_table(tag == TTABLE ? std::make_unique<HashTable>() : nullptr), d(0), b(false)
+    LuaVal(const LuaTypeTag tag) : tag(tag), tbl_ptr(tag == TTABLE ? new LuaTable() : nullptr), d(0), b(false)
     {
-        if (istable() && !hash_table)
+        if (istable() && !tbl_ptr)
             throw smallfolk_exception("creating table LuaVal with nullptr table");
         makehash();
     }
-    LuaVal() : tag(TNIL), hash_table(nullptr), d(0), b(false)
+    LuaVal() : tag(TNIL), tbl_ptr(nullptr), d(0), b(false)
     {
         makehash();
     }
-    LuaVal(const long d) : tag(TNUMBER), hash_table(nullptr), d(d), b(false)
+    LuaVal(const long d) : tag(TNUMBER), tbl_ptr(nullptr), d(d), b(false)
     {
         makehash();
     }
-    LuaVal(const unsigned long d) : tag(TNUMBER), hash_table(nullptr), d(d), b(false)
+    LuaVal(const unsigned long d) : tag(TNUMBER), tbl_ptr(nullptr), d(d), b(false)
     {
         makehash();
     }
-    LuaVal(const int d) : tag(TNUMBER), hash_table(nullptr), d(d), b(false)
+    LuaVal(const int d) : tag(TNUMBER), tbl_ptr(nullptr), d(d), b(false)
     {
         makehash();
     }
-    LuaVal(const unsigned int d) : tag(TNUMBER), hash_table(nullptr), d(d), b(false)
+    LuaVal(const unsigned int d) : tag(TNUMBER), tbl_ptr(nullptr), d(d), b(false)
     {
         makehash();
     }
-    LuaVal(const float d) : tag(TNUMBER), hash_table(nullptr), d(d), b(false)
+    LuaVal(const float d) : tag(TNUMBER), tbl_ptr(nullptr), d(d), b(false)
     {
         makehash();
     }
-    LuaVal(const double d) : tag(TNUMBER), hash_table(nullptr), d(d), b(false)
+    LuaVal(const double d) : tag(TNUMBER), tbl_ptr(nullptr), d(d), b(false)
     {
         makehash();
     }
-    LuaVal(const std::string& s) : tag(TSTRING), hash_table(nullptr), s(s), d(0), b(false)
+    LuaVal(const std::string& s) : tag(TSTRING), tbl_ptr(nullptr), s(s), d(0), b(false)
     {
         makehash();
     }
-    LuaVal(const char* s) : tag(TSTRING), hash_table(nullptr), s(s), d(0), b(false)
+    LuaVal(const char* s) : tag(TSTRING), tbl_ptr(nullptr), s(s), d(0), b(false)
     {
         makehash();
     }
-    LuaVal(const bool b) : tag(TBOOL), hash_table(nullptr), b(b), d(0)
+    LuaVal(const bool b) : tag(TBOOL), tbl_ptr(nullptr), b(b), d(0)
     {
         makehash();
     }
-    LuaVal(HashTable hashtable) : tag(TTABLE), hash_table(std::make_unique<HashTable>(hashtable)), d(0), b(false)
+    LuaVal(LuaTable const & luatable) : tag(TTABLE), tbl_ptr(new LuaTable(luatable)), d(0), b(false)
     {
-        if (!hash_table)
+        if (!tbl_ptr)
             throw smallfolk_exception("creating table LuaVal with nullptr table");
         makehash();
     }
-    LuaVal(LuaVal const & val) : tag(val.tag), hash_table(val.tag == TTABLE ? std::make_unique<HashTable>(val.hash_table) : nullptr), s(val.s), d(val.d), b(val.b)
+    LuaVal(LuaVal const & val) : tag(val.tag), tbl_ptr(val.tag == TTABLE ? new LuaTable(*val.tbl_ptr.get()) : nullptr), s(val.s), d(val.d), b(val.b)
     {
         if (istable())
         {
-            if (!hash_table)
+            if (!tbl_ptr)
                 throw smallfolk_exception("creating table LuaVal with nullptr table");
         }
         makehash();
@@ -169,7 +169,7 @@ public:
     bool isnil() const { return tag == TNIL; }
 
     // create a table (same as LuaVal(TTABLE);)
-    static LuaVal table(HashTable arr = HashTable())
+    static LuaVal table(LuaTable arr = LuaTable())
     {
         return LuaVal(arr);
     }
@@ -181,7 +181,7 @@ public:
             throw smallfolk_exception("using set on non table object");
         if (k.isnil()) // on nil key do nothing
             return *this;
-        HashTable & tbl = (*hash_table);
+        LuaTable & tbl = (*tbl_ptr);
         if (v.isnil()) // on nil value erase key
             tbl.erase(k);
         else
@@ -199,7 +199,7 @@ public:
             throw smallfolk_exception("using [] with nil key");
         if (k.isnil()) // on nil key do nothing
             return nil();
-        HashTable & tbl = (*hash_table);
+        LuaTable & tbl = (*tbl_ptr);
         return tbl[k];
     }
 
@@ -211,7 +211,7 @@ public:
             throw smallfolk_exception("using [] on non table object");
         if (k.isnil())
             throw smallfolk_exception("using [] with nil key");
-        HashTable & tbl = (*hash_table);
+        LuaTable & tbl = (*tbl_ptr);
         return tbl[k];
     }
 
@@ -222,7 +222,7 @@ public:
             throw smallfolk_exception("using get on non table object");
         if (k.isnil()) // on nil key do nothing
             return nil();
-        HashTable & tbl = (*hash_table);
+        LuaTable & tbl = (*tbl_ptr);
         auto it = tbl.find(k);
         if (it != tbl.end())
             return it->second;
@@ -258,11 +258,11 @@ public:
         return b;
     }
     // get a table value
-    HashTable tbl() const
+    LuaTable const & tbl() const
     {
         if (!istable())
             throw smallfolk_exception("using tbl on non table object");
-        return *hash_table.get();
+        return *tbl_ptr;
     }
 
     // serializes the value into string
@@ -340,7 +340,7 @@ public:
             case TNUMBER:
                 return d == rhs.d;
             case TTABLE:
-                return hash_table == rhs.hash_table;
+                return tbl_ptr == rhs.tbl_ptr;
             default:
                 throw smallfolk_exception("operator== invalid or unhandled tag %i", tag);
         }
@@ -361,14 +361,20 @@ public:
     LuaVal& operator=(LuaVal const& val)
     {
         tag = val.tag;
-        hash_table = val.tag == TTABLE ? std::make_unique<HashTable>(val.hash_table) : nullptr;
+        if (istable())
+        {
+            tbl_ptr = (std::make_unique<LuaTable>());
+            *tbl_ptr = *val.tbl_ptr.get();
+        }
+        else
+            tbl_ptr = std::make_unique<LuaTable>(val.tbl_ptr);
         s = val.s;
         d = val.d;
         b = val.b;
 
         if (istable())
         {
-            if (!hash_table)
+            if (!tbl_ptr)
                 throw smallfolk_exception("creating table LuaVal with nullptr table");
         }
 
@@ -383,7 +389,7 @@ private:
 
     LuaTypeTag tag;
 
-    LuaTable hash_table;
+    TblPtr tbl_ptr;
     size_t hash_val;
     std::string s;
     // int64_t i; // lua 5.3 support?
@@ -402,7 +408,7 @@ private:
         sprintf_s(arr, "%.17g", d);
         return arr;
     }
-    static std::string tostring(LuaTable const & ptr)
+    static std::string tostring(TblPtr const & ptr)
     {
         char arr[128];
         sprintf_s(arr, "table: %p", ptr);
@@ -426,7 +432,7 @@ private:
         acc << '{';
         std::map<unsigned int, const LuaVal*> arr;
         std::unordered_map<const LuaVal*, const LuaVal*> hash;
-        for (auto&& v : *object.hash_table)
+        for (auto&& v : *object.tbl_ptr)
         {
             if (v.first.isnumber() && v.first.num() >= 1 && std::floor(v.first.num()) == v.first.num())
                 arr[static_cast<unsigned int>(v.first.num())] = &v.second;
