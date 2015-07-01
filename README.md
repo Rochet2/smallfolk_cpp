@@ -1,5 +1,4 @@
-smallfolk_cpp
-=========
+#smallfolk_cpp
 
 Insipred and supposedly works with the pure lua serializer Smallfolk.
 Most serializer logic is borrowed from gvx/Smallfolk.
@@ -14,8 +13,17 @@ They allow representing bool, number, string, nil and table.
 
 You use, distribute and extend Smallfolk_cpp under the terms of the MIT license.
 
-Usage
------
+**Table of Contents**  *generated with [DocToc](http://doctoc.herokuapp.com/)*
+
+- [smallfolk_cpp](#)
+	- [Usage](#)
+	- [Fast](#)
+	- [Robust](#)
+	- [Security](#)
+	- [Tested](#)
+	- [Reference](#)
+
+##Usage
 
 ```C++
 #include smallfolk.h
@@ -41,8 +49,7 @@ std::cout << deserialized[1].str() << " " << deserialized["test"].str() << " " <
 // Example output: Hello world -234.5
 ```
 
-Fast
-----
+##Fast
 
 Its C++, duh!?
 
@@ -55,11 +62,11 @@ To put this into any kind of perspective, here is the print of the serialized da
 {t,"somestring",123.456,t:-678,"test":123.45600128173828,f:268435455,"subtable":{1,2,3}}
 ```
 
-Robust
-------
+##Table cycles
 
 **Note: This feature was disabled cause of difficult implementing in C++ and possibly unwanted infinite cycles. All table assigning create copies now in the C++ code and no @ notation is recognised for serializing or deserializing.**
 
+From original smallfolk
 > Sometimes you have strange, non-euclidean geometries in your table
 > constructions. It happens, I don't judge. Smallfolk can deal with that, where
 > some other serialization libraries (or anything that produces JSON) cry "Iä!
@@ -83,22 +90,20 @@ std::cout << cthulhu.dumps() << std::endl;
 // {"fhtagn":@1,1:{{@2:@3}:{@4:@1}},2:@3,3:@4}
 ```
 
-Security
-------
+##Security
 
 No comments.
 
-Tested
-------
+##Tested
 
 Tested very little.
 _Should_ contain no crashes or memory leaks.
 
-Reference
----------
+##Reference
 
+###Try-catch
 Most functions can throw smallfolk_exception and some string library errors and more.
-The method of try catching used in loads and dumps functions is this:
+One method for try catching errors you can use is this:
 ```C++
 const char* errmsg = nullptr;
 try {
@@ -112,10 +117,13 @@ catch (...) {
 }
 ```
 
+###(de)serializing
 The main functionality is provided by `luaval.dumps(std::string* errmsg)` and `LuaVal::loads(std::string const & string, std::string* errmsg)`.
 Dumps returns a string serialization from the luaval it is called on. Loads returns a LuaVal from the string passed to it.
 Errmsg is an optional pointer to a valid string object that is filled with the error message if any.
+The functions have a try-catch in place and should never throw.
 
+###LuaVal constructors
 Constructors allow implicit and you can make all possible values by giving it to the constructor.
 Constructors do not throw in normal circumstances.
 ```C++
@@ -133,6 +141,16 @@ LuaVal t(TTABLE);
 LuaVal t2 = LuaVal::table();
 ```
 
+###static nil
+A static function `LuaVal::nil()` returns a const reference to a preconstructed nil object.
+It is used as a return value when a nil value is needed, but it is identical to any other constructed LuaVal that represents nil.
+This function does not throw.
+
+###hash
+The LuaVal class contains a hasher struct `LuaVal::LuaValHasher` for when you need to use a LuaVal in a hash container for example: `std::unordered_set<LuaVal, LuaVal::LuaValHasher> myset;`.
+The hasher uses `LuaVal::tostring()`.
+
+###typetag
 There is a definition of type tags used to identify each value type. These can be used in the constructor as well.
 For example a table can be created with `LuaValue table(TTABLE)`. You can get the type tag of an object with the member function `luaval.GetTypeTag()`.
 GetTypeTag does not throw.
@@ -147,6 +165,17 @@ enum LuaTypeTag
 };
 ```
 
+###tostring
+The member function `luaval.tostring()` returns a string representation of the object. This is similar to tostring in lua.
+This function does not throw in normal circumstances.
+
+###operators
+The LuaVal class offers a few operators.  
+You can use == and != operators to compare, howevever different table objects are copies so they are never equal unless you actually compare with the same object.
+LuaVal has the bool operator implemented so that nil and false will return false. Any other object returns true, just like in lua. The assignment operator is also implemented and works as you would expect.
+These operators do not throw in normal circumstances.
+
+###isvalue
 There is a collection of functions you can use to check whether the object is really of some type.
 These functions do not throw.
 ```C++
@@ -157,16 +186,7 @@ luaval.isbool()
 luaval.isnil()
 ```
 
-A static function `LuaVal::nil()` returns a const reference to a preconstructed nil object.
-It is used as a return value when a nil value is needed, but it is identical to any other constructed LuaVal that represents nil.
-This function does not throw.
-
-The member function `luaval.tostring()` returns a string representation of the object. This is similar to tostring in lua.
-This function does not throw in normal circumstances.
-
-The LuaVal class contains a hasher struct `LuaVal::LuaValHasher` for when you need to use a LuaVal in a hash container for example: `std::unordered_set<LuaVal, LuaVal::LuaValHasher> myset;`.
-The hasher uses `LuaVal::tostring()`.
-
+###LuaVal values
 `LuaVal::LuaTable` is used inside a lua table as the storage for values.
 You can create one and use it to initialize a lua table object. You can get the LuaTable from a LuaVal with the `luaval.tbl()` member function.  
 Since C++ is not able to return _any_ value, there is a set of functions to get the actual value of a LuaVal.
@@ -178,6 +198,7 @@ luaval.boolean()
 luaval.tbl()
 ```
 
+###table functions
 LuaVal representing a table offers two ways of getting and setting values.  
 You can use lua table like a map. It offers the `[]` operator for accessing an element by key. However the operator creates nils as values by default if the key does not exist. Also it throws if you use nil as a key or use it on a non table object.
 Example usage:
@@ -191,6 +212,7 @@ table["self copy"] = table;
 table[table] = "table as key?";
 std::cout << table["self copy"][3].num() << std::endl;
 ```
+
 The second way of accessing and inserting map elements are the get and set member functions `luaval.get(key)`, `luaval.set(key, value)`.
 The function `set` returns the table, so you can chain it to set multiple values.
 These functions do not throw unless you use them on non table objects. They also do not create default values for nonexisting keys and when a value is set as nil, it will be erased.
@@ -211,9 +233,3 @@ The len function returns the number of consecutive integer key elements in the t
 Insert and remove shift the values on the right side of the given position and insert or remove a value to or at the given position. If position is omitted, the value is inserted to the end of the list or the last element is removed.
 Insert and remove both return self.
 Each function throws if used on a non table object or pos is not valid.
-
-The LuaVal class offers a few operators.  
-You can use == and != operators to compare, howevever different table objects are copies so they are never equal unless you actually compare with the same object.
-LuaVal has the bool operator implemented so that nil and false will return false. Any other object returns true, just like in lua. The assignment operator is also implemented and works as you would expect.
-These operators do not throw in normal circumstances.
-
