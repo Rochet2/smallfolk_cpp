@@ -65,9 +65,9 @@ public:
         {
             case TBOOL:
                 if (b)
-                    return "1";
+                    return "true";
                 else
-                    return "0";
+                    return "false";
             case TNIL:
                 return "nil";
             case TSTRING:
@@ -83,17 +83,11 @@ public:
         return std::string();
     }
 
-    // returns the string representation of the value info
-    size_t hash() const
-    {
-        return hash_val;
-    }
-
     static struct LuaValHasher
     {
-        size_t operator()(LuaVal const& v) const
+        size_t operator()(LuaVal const & v) const
         {
-            return v.hash();
+            return std::hash<std::string>()(v.tostring());
         }
     };
 
@@ -104,53 +98,41 @@ public:
     {
         if (istable() && !tbl_ptr)
             throw smallfolk_exception("creating table LuaVal with nullptr table");
-        makehash();
     }
     LuaVal() : tag(TNIL), tbl_ptr(nullptr), d(0), b(false)
     {
-        makehash();
     }
     LuaVal(const long d) : tag(TNUMBER), tbl_ptr(nullptr), d(d), b(false)
     {
-        makehash();
     }
     LuaVal(const unsigned long d) : tag(TNUMBER), tbl_ptr(nullptr), d(d), b(false)
     {
-        makehash();
     }
     LuaVal(const int d) : tag(TNUMBER), tbl_ptr(nullptr), d(d), b(false)
     {
-        makehash();
     }
     LuaVal(const unsigned int d) : tag(TNUMBER), tbl_ptr(nullptr), d(d), b(false)
     {
-        makehash();
     }
     LuaVal(const float d) : tag(TNUMBER), tbl_ptr(nullptr), d(d), b(false)
     {
-        makehash();
     }
     LuaVal(const double d) : tag(TNUMBER), tbl_ptr(nullptr), d(d), b(false)
     {
-        makehash();
     }
     LuaVal(const std::string& s) : tag(TSTRING), tbl_ptr(nullptr), s(s), d(0), b(false)
     {
-        makehash();
     }
     LuaVal(const char* s) : tag(TSTRING), tbl_ptr(nullptr), s(s), d(0), b(false)
     {
-        makehash();
     }
-    LuaVal(const bool b) : tag(TBOOL), tbl_ptr(nullptr), b(b), d(0)
+    LuaVal(const bool b) : tag(TBOOL), tbl_ptr(nullptr), d(0), b(b)
     {
-        makehash();
     }
     LuaVal(LuaTable const & luatable) : tag(TTABLE), tbl_ptr(new LuaTable(luatable)), d(0), b(false)
     {
         if (!tbl_ptr)
             throw smallfolk_exception("creating table LuaVal with nullptr table");
-        makehash();
     }
     LuaVal(LuaVal const & val) : tag(val.tag), tbl_ptr(val.tag == TTABLE ? new LuaTable(*val.tbl_ptr.get()) : nullptr), s(val.s), d(val.d), b(val.b)
     {
@@ -159,7 +141,6 @@ public:
             if (!tbl_ptr)
                 throw smallfolk_exception("creating table LuaVal with nullptr table");
         }
-        makehash();
     }
 
     bool isstring() const { return tag == TSTRING; }
@@ -172,47 +153,6 @@ public:
     static LuaVal table(LuaTable arr = LuaTable())
     {
         return LuaVal(arr);
-    }
-
-    // settable, return self
-    LuaVal set(LuaVal const & k, LuaVal const & v)
-    {
-        if (!istable())
-            throw smallfolk_exception("using set on non table object");
-        if (k.isnil()) // on nil key do nothing
-            return *this;
-        LuaTable & tbl = (*tbl_ptr);
-        if (v.isnil()) // on nil value erase key
-            tbl.erase(k);
-        else
-            tbl[k] = v; // normally set pair
-        return *this;
-    }
-
-    // gettable - note, adds key-nil pair if not existing
-    // nil key throws error
-    LuaVal operator [](LuaVal const & k) const
-    {
-        if (!istable())
-            throw smallfolk_exception("using [] on non table object");
-        if (k.isnil())
-            throw smallfolk_exception("using [] with nil key");
-        if (k.isnil()) // on nil key do nothing
-            return nil();
-        LuaTable & tbl = (*tbl_ptr);
-        return tbl[k];
-    }
-
-    // get-set-table - note, adds key-nil pair if not existing
-    // nil key throws error
-    LuaVal & operator [](LuaVal const & k)
-    {
-        if (!istable())
-            throw smallfolk_exception("using [] on non table object");
-        if (k.isnil())
-            throw smallfolk_exception("using [] with nil key");
-        LuaTable & tbl = (*tbl_ptr);
-        return tbl[k];
     }
 
     // gettable
@@ -229,26 +169,132 @@ public:
         return nil();
     }
 
+    // settable, return self
+    LuaVal & set(LuaVal const & k, LuaVal const & v)
+    {
+        if (!istable())
+            throw smallfolk_exception("using set on non table object");
+        if (k.isnil()) // on nil key do nothing
+            return *this;
+        LuaTable & tbl = (*tbl_ptr);
+        if (v.isnil()) // on nil value erase key
+            tbl.erase(k);
+        else
+            tbl[k] = v; // normally set pair
+        return *this;
+    }
+
+    // erase, return self
+    LuaVal & rem(LuaVal const & k)
+    {
+        if (!istable())
+            throw smallfolk_exception("using rem on non table object");
+        LuaTable & tbl = (*tbl_ptr);
+        tbl.erase(k);
+        return *this;
+    }
+
+    // table array size, not actual element count
+    unsigned int len() const
+    {
+        if (!istable())
+            throw smallfolk_exception("using len on non table object");
+        LuaTable & tbl = (*tbl_ptr);
+        unsigned int i = 0;
+        while (++i)
+        {
+            auto it = tbl.find(i);
+            if (it == tbl.end() || it->second.isnil())
+                break;
+        }
+        return i - 1;
+    }
+
+    // table.insert, return self
+    LuaVal & insert(LuaVal const & v, LuaVal const & pos = nil())
+    {
+        if (!istable())
+            throw smallfolk_exception("using insert on non table object");
+        LuaTable & tbl = (*tbl_ptr);
+        if (pos.isnil())
+        {
+            if (!v.isnil())
+                tbl[len() + 1] = v;
+            return *this;
+        }
+        if (!pos.isnumber())
+            throw smallfolk_exception("using insert with non number pos");
+        if (std::floor(pos.num()) != pos.num())
+            throw smallfolk_exception("using insert with invalid number key");
+        unsigned int max = len() + 1;
+        unsigned int val = static_cast<unsigned int>(pos.num());
+        if (val <= 0 || val > max)
+            throw smallfolk_exception("using insert with out of bounds key");
+        for (unsigned int i = max; i > val; --i)
+            tbl[i] = tbl[i - 1];
+        if (v.isnil())
+            tbl.erase(val);
+        else
+            tbl[val] = v;
+        return *this;
+    }
+
+    // table.remove, return self
+    LuaVal & remove(LuaVal const & pos = nil())
+    {
+        if (!istable())
+            throw smallfolk_exception("using remove on non table object");
+        LuaTable & tbl = (*tbl_ptr);
+        if (pos.isnil())
+        {
+            if (unsigned int i = len())
+                tbl.erase(i);
+            return *this;
+        }
+        if (!pos.isnumber())
+            throw smallfolk_exception("using remove with non number key");
+        if (std::floor(pos.num()) != pos.num())
+            throw smallfolk_exception("using remove with invalid number key");
+        unsigned int max = len();
+        unsigned int val = static_cast<unsigned int>(pos.num());
+        if (val <= 0 || val > max + 1)
+            throw smallfolk_exception("using remove with out of bounds key");
+        for (unsigned int i = val; i < max; ++i)
+            tbl[i] = tbl[i + 1];
+        tbl.erase(max);
+        return *this;
+    }
+
+    // gettable - note, adds key-nil pair if not existing
+    // nil key throws error
+    LuaVal operator [](LuaVal const & k) const
+    {
+        if (!istable())
+            throw smallfolk_exception("using [] on non table object");
+        if (k.isnil())
+            throw smallfolk_exception("using [] with nil key");
+        LuaTable & tbl = (*tbl_ptr);
+        return tbl[k];
+    }
+
+    // get-set-table - note, adds key-nil pair if not existing
+    // nil key throws error
+    LuaVal & operator [](LuaVal const & k)
+    {
+        if (!istable())
+            throw smallfolk_exception("using [] on non table object");
+        if (k.isnil())
+            throw smallfolk_exception("using [] with nil key");
+        LuaTable & tbl = (*tbl_ptr);
+        return tbl[k];
+    }
+
     // get a number value
     double num() const
     {
         if (!isnumber())
             throw smallfolk_exception("using num on non number object");
         return d;
-    }
-    // get a string value
-    std::string str() const
-    {
-        if (!isstring())
-            throw smallfolk_exception("using str on non string object");
-        return s;
-    }
-    // get a cstring value
-    const char* cstr() const
-    {
-        if (!isstring())
-            throw smallfolk_exception("using cstr on non string object");
-        return s.c_str();
     }
     // get a boolean value
     bool boolean() const
@@ -257,12 +303,23 @@ public:
             throw smallfolk_exception("using boolean on non bool object");
         return b;
     }
+    // get a string value
+    std::string const & str() const
+    {
+        if (!isstring())
+            throw smallfolk_exception("using str on non string object");
+        return s;
+    }
     // get a table value
     LuaTable const & tbl() const
     {
         if (!istable())
             throw smallfolk_exception("using tbl on non table object");
         return *tbl_ptr;
+    }
+    LuaTypeTag GetTypeTag() const
+    {
+        return tag;
     }
 
     // serializes the value into string
@@ -298,13 +355,10 @@ public:
     // deserialize a string into a LuaVal
     // string param is deserialized string
     // errmsg is optional value to output error message to on failure
-    // maxsize is optional max length for the deserialized string
-    static LuaVal loads(std::string const & string, std::string* errmsg = nullptr, size_t maxsize = 10000)
+    static LuaVal loads(std::string const & string, std::string* errmsg = nullptr)
     {
         try
         {
-            if (string.length() > maxsize)
-                return nil();
             TABLES tables;
             size_t i = 0;
             return expect_object(string, i, tables);
@@ -355,7 +409,7 @@ public:
     // You can use !val to check for nil or false
     explicit operator bool()
     {
-        return !isnil() || (isbool() && boolean());
+        return !isnil() && (!isbool() || boolean());
     }
 
     LuaVal& operator=(LuaVal const& val)
@@ -377,8 +431,6 @@ public:
             if (!tbl_ptr)
                 throw smallfolk_exception("creating table LuaVal with nullptr table");
         }
-
-        makehash();
         return *this;
     }
 
@@ -390,16 +442,10 @@ private:
     LuaTypeTag tag;
 
     TblPtr tbl_ptr;
-    size_t hash_val;
     std::string s;
     // int64_t i; // lua 5.3 support?
     double d;
     bool b;
-
-    void makehash()
-    {
-        hash_val = std::hash<std::string>()(tostring());
-    }
 
     // sprintf is ~50% faster than other solutions
     static std::string tostring(const double d)
