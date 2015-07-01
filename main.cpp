@@ -60,11 +60,11 @@ int main()
         std::cout << t2.tostring() << std::endl;
         std::cout << std::endl;
 
-        const char* errmsg = nullptr;
+        std::string errmsg;
         try
         {
             LuaVal i(-7);
-            i.isstring(); // error
+            std::string str = i.str(); // error
         }
         catch (std::exception& e)
         {
@@ -74,7 +74,7 @@ int main()
         {
             errmsg = "Smallfolk_cpp error";
         }
-        if (errmsg)
+        if (!errmsg.empty())
             std::cout << errmsg << std::endl << std::endl;
     }
 
