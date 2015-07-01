@@ -114,7 +114,7 @@ _Should_ contain no crashes or memory leaks.
 Most functions can throw smallfolk_exception and some string library errors and more.
 One method for try catching errors you can use is this:
 ```C++
-const char* errmsg = nullptr;
+std::string errmsg;
 try {
   // code
 }
@@ -124,6 +124,8 @@ catch (std::exception& e) {
 catch (...) {
   errmsg = "Smallfolk_cpp error";
 }
+if (!errmsg.empty())
+  std::cout << errmsg << std::endl;
 ```
 
 ###(de)serializing
