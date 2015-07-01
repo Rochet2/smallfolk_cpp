@@ -13,15 +13,24 @@ They allow representing bool, number, string, nil and table.
 
 You use, distribute and extend Smallfolk_cpp under the terms of the MIT license.
 
-**Table of Contents**  *generated with [DocToc](http://doctoc.herokuapp.com/)*
-
-- [smallfolk_cpp](#)
-	- [Usage](#)
-	- [Fast](#)
-	- [Robust](#)
-	- [Security](#)
-	- [Tested](#)
-	- [Reference](#)
+- [smallfolk_cpp](#smallfolk_cpp)
+	- [Usage](#Usage)
+	- [Fast](#Fast)
+	- [Table cycles](#Table cycles)
+	- [Security](#Security)
+	- [Tested](#Tested)
+	- [Reference](#Reference)
+		- [Try-catch](#Try-catch)
+		- [(de)serializing](#(de)serializing)
+		- [LuaVal constructors](#LuaVal constructors)
+		- [static nil](#static nil)
+		- [hash](#hash)
+		- [typetag](#typetag)
+		- [tostring](#tostring)
+		- [operators](#operators)
+		- [isvalue](#isvalue)
+		- [LuaVal values](#LuaVal values)
+		- [table functions](#table functions)
 
 ##Usage
 
