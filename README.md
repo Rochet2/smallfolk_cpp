@@ -14,23 +14,23 @@ They allow representing bool, number, string, nil and table.
 You use, distribute and extend Smallfolk_cpp under the terms of the MIT license.
 
 - [smallfolk_cpp](#smallfolk_cpp)
-	- [Usage](#Usage)
-	- [Fast](#Fast)
-	- [Table cycles](#Table cycles)
-	- [Security](#Security)
-	- [Tested](#Tested)
-	- [Reference](#Reference)
-		- [Try-catch](#Try-catch)
-		- [(de)serializing](#(de)serializing)
-		- [LuaVal constructors](#LuaVal constructors)
-		- [static nil](#static nil)
+	- [Usage](#usage)
+	- [Fast](#fast)
+	- [Table cycles](#table-cycles)
+	- [Security](#security)
+	- [Tested](#tested)
+	- [Reference](#reference)
+		- [try-catch](#try-catch)
+		- [(de)serializing](#deserializing)
+		- [LuaVal constructors](#luaval-constructors)
+		- [static nil](#static-nil)
 		- [hash](#hash)
 		- [typetag](#typetag)
 		- [tostring](#tostring)
 		- [operators](#operators)
 		- [isvalue](#isvalue)
-		- [LuaVal values](#LuaVal values)
-		- [table functions](#table functions)
+		- [LuaVal values](#luaval-values)
+		- [table functions](#table-functions)
 
 ##Usage
 
@@ -110,7 +110,7 @@ _Should_ contain no crashes or memory leaks.
 
 ##Reference
 
-###Try-catch
+###try-catch
 Most functions can throw smallfolk_exception and some string library errors and more.
 One method for try catching errors you can use is this:
 ```C++
