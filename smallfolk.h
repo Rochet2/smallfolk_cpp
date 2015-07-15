@@ -142,6 +142,15 @@ public:
                 throw smallfolk_exception("creating table LuaVal with nullptr table");
         }
     }
+    LuaVal(std::initializer_list<LuaVal const> l) : tag(TTABLE), tbl_ptr(new LuaTable()), d(0), b(false)
+    {
+        if (!tbl_ptr)
+            throw smallfolk_exception("creating table LuaVal with nullptr table");
+        LuaTable & tbl = *tbl_ptr;
+        unsigned int i = 0;
+        for (auto&& v : l)
+            tbl[++i] = v;
+    }
 
     bool isstring() const { return tag == TSTRING; }
     bool isnumber() const { return tag == TNUMBER; }
