@@ -466,7 +466,7 @@ private:
     static std::string tostring(TblPtr const & ptr)
     {
         char arr[128];
-        sprintf_s(arr, "table: %p", ptr);
+        sprintf_s(arr, "table: %p", ptr.get());
         return arr;
     }
 
