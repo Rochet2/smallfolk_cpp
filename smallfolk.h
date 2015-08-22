@@ -83,11 +83,25 @@ public:
         return std::string();
     }
 
-    static struct LuaValHasher
+    struct LuaValHasher
     {
         size_t operator()(LuaVal const & v) const
         {
-            return std::hash<std::string>()(v.tostring());
+            switch (v.tag)
+            {
+            case TBOOL:
+                return std::hash<bool>()(v.b);
+            case TNIL:
+                return std::hash<int>()(0);
+            case TSTRING:
+                return std::hash<std::string>()(v.s);
+            case TNUMBER:
+                return std::hash<double>()(v.d);
+            case TTABLE:
+                return std::hash<TblPtr>()(v.tbl_ptr);
+            default:
+                return std::hash<std::string>()(v.tostring());
+            }
         }
     };
 
