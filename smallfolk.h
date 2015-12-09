@@ -197,7 +197,7 @@ public:
         tag = val.tag;
         if (istable())
         {
-            tbl_ptr = (std::make_unique<LuaTable>());
+            tbl_ptr = TblPtr();
             *tbl_ptr = *val.tbl_ptr.get();
         }
         else
