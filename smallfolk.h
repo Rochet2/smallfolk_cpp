@@ -223,12 +223,9 @@ private:
 
     TblPtr tbl_ptr;
     std::string s;
-    union
-    {
-        // int64_t i; // lua 5.3 support?
-        double d;
-        bool b;
-    };
+    // int64_t i; // lua 5.3 support?
+    double d;
+    bool b;
 
     // sprintf is ~50% faster than other solutions
     static std::string tostring(const double d);
