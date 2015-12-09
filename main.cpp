@@ -1,6 +1,3 @@
-// main.cpp : Defines the entry point for the console application.
-//
-
 #include "smallfolk.h"
 
 int main()
@@ -62,8 +59,8 @@ int main()
         std::string errmsg;
         try
         {
-            LuaVal i(-7);
-            std::string str = i.str(); // error
+            LuaVal h(-7);
+            std::string str = h.str(); // error
         }
         catch (std::exception& e)
         {
