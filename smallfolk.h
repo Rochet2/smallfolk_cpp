@@ -63,21 +63,21 @@ public:
     {
         switch (tag)
         {
-            case TBOOL:
-                if (b)
-                    return "true";
-                else
-                    return "false";
-            case TNIL:
-                return "nil";
-            case TSTRING:
-                return s;
-            case TNUMBER:
-                return tostring(d);
-            case TTABLE:
-                return tostring(tbl_ptr);
-            default:
-                break;
+        case TBOOL:
+            if (b)
+                return "true";
+            else
+                return "false";
+        case TNIL:
+            return "nil";
+        case TSTRING:
+            return s;
+        case TNUMBER:
+            return tostring(d);
+        case TTABLE:
+            return tostring(tbl_ptr);
+        default:
+            break;
         }
         throw smallfolk_exception("tostring invalid or unhandled tag %i", tag);
         return std::string();
@@ -155,6 +155,9 @@ public:
             if (!tbl_ptr)
                 throw smallfolk_exception("creating table LuaVal with nullptr table");
         }
+    }
+    LuaVal(LuaVal && val) : tag(val.tag), tbl_ptr(std::move(val.tbl_ptr)), s(std::move(val.s)), d(val.d), b(val.b)
+    {
     }
     LuaVal(std::initializer_list<LuaVal const> l) : tag(TTABLE), tbl_ptr(new LuaTable()), d(0), b(false)
     {
@@ -384,7 +387,7 @@ public:
         {
             TABLES tables;
             size_t i = 0;
-            return expect_object(string, i, tables);
+            return std::move(expect_object(string, i, tables));
         }
         catch (std::exception& e)
         {
@@ -408,18 +411,18 @@ public:
             return false;
         switch (tag)
         {
-            case TBOOL:
-                return b == rhs.b;
-            case TNIL:
-                return true;
-            case TSTRING:
-                return s == rhs.s;
-            case TNUMBER:
-                return d == rhs.d;
-            case TTABLE:
-                return tbl_ptr == rhs.tbl_ptr;
-            default:
-                throw smallfolk_exception("operator== invalid or unhandled tag %i", tag);
+        case TBOOL:
+            return b == rhs.b;
+        case TNIL:
+            return true;
+        case TSTRING:
+            return s == rhs.s;
+        case TNUMBER:
+            return d == rhs.d;
+        case TTABLE:
+            return tbl_ptr == rhs.tbl_ptr;
+        default:
+            throw smallfolk_exception("operator== invalid or unhandled tag %i", tag);
         }
         return false;
     }
@@ -444,7 +447,7 @@ public:
             *tbl_ptr = *val.tbl_ptr.get();
         }
         else
-            tbl_ptr = std::make_unique<LuaTable>(val.tbl_ptr);
+            tbl_ptr = nullptr;
         s = val.s;
         d = val.d;
         b = val.b;
@@ -480,7 +483,7 @@ private:
     static std::string tostring(TblPtr const & ptr)
     {
         char arr[128];
-        sprintf_s(arr, "table: %p", ptr.get());
+        sprintf_s(arr, "table: %p", static_cast<const void*>(ptr.get()));
         return arr;
     }
 
@@ -493,8 +496,8 @@ private:
         auto it = memo.find(object);
         if (it != memo.end())
         {
-            acc << '@' << it->second;
-            return nmemo;
+        acc << '@' << it->second;
+        return nmemo;
         }
         memo[object] = ++nmemo;
         */
@@ -539,51 +542,51 @@ private:
             acc << l;
         }
         acc << '}';
-        return nmemo;
+        return std::move(nmemo);
     }
 
     static size_t dump_object(LuaVal const & object, unsigned int nmemo, MEMO& memo, ACC& acc)
     {
         switch (object.tag)
         {
-            case TBOOL:
-                acc << (object.b ? 't' : 'f');
-                break;
-            case TNIL:
-                acc << 'n';
-                break;
-            case TSTRING:
-                acc << '"';
-                acc << escape_quotes(object.s); // change to std::quote() in c++14?
-                acc << '"';
-                break;
-            case TNUMBER:
-                if (!isfinite(object.d))
-                {
-                    // slightly ugly :(
-                    std::string nn = tostring(object.d);
-                    if (nn == "1.#INF")
-                        acc << 'I';
-                    else if (nn == "-1.#INF")
-                        acc << 'i';
-                    else if (nn == "1.#IND")
-                        acc << 'i';
-                    else if (nn == "-1.#IND")
-                        acc << 'N';
-                    else
-                        acc << 'Q';
-                }
+        case TBOOL:
+            acc << (object.b ? 't' : 'f');
+            break;
+        case TNIL:
+            acc << 'n';
+            break;
+        case TSTRING:
+            acc << '"';
+            acc << escape_quotes(object.s); // change to std::quote() in c++14?
+            acc << '"';
+            break;
+        case TNUMBER:
+            if (!isfinite(object.d))
+            {
+                // slightly ugly :(
+                std::string nn = tostring(object.d);
+                if (nn == "1.#INF")
+                    acc << 'I';
+                else if (nn == "-1.#INF")
+                    acc << 'i';
+                else if (nn == "1.#IND")
+                    acc << 'i';
+                else if (nn == "-1.#IND")
+                    acc << 'N';
                 else
-                    acc << object.d;
-                break;
-            case TTABLE:
-                return dump_type_table(object, nmemo, memo, acc);
-                break;
-            default:
-                throw smallfolk_exception("dump_object invalid or unhandled tag %i", object.tag);
-                break;
+                    acc << 'Q';
+            }
+            else
+                acc << object.d;
+            break;
+        case TTABLE:
+            return dump_type_table(object, nmemo, memo, acc);
+            break;
+        default:
+            throw smallfolk_exception("dump_object invalid or unhandled tag %i", object.tag);
+            break;
         }
-        return nmemo;
+        return std::move(nmemo);
     }
 
     static std::string escape_quotes(const std::string &before)
@@ -595,14 +598,14 @@ private:
         {
             switch (before[i])
             {
-                case '"':
-                    after += '"'; // no break
-                default:
-                    after += before[i];
+            case '"':
+                after += '"'; // no break
+            default:
+                after += before[i];
             }
         }
 
-        return after;
+        return std::move(after);
     }
 
     static std::string unescape_quotes(const std::string &before)
@@ -614,31 +617,31 @@ private:
         {
             switch (before[i])
             {
-                case '"':
-                    if (i + 1 < before.length() && before[i + 1] == '"')
-                        ++i;
-                default:
-                    after += before[i];
+            case '"':
+                if (i + 1 < before.length() && before[i + 1] == '"')
+                    ++i;
+            default:
+                after += before[i];
             }
         }
 
-        return after;
+        return std::move(after);
     }
 
     static bool nonzero_digit(char c)
     {
         switch (c)
         {
-            case '1':
-            case '2':
-            case '3':
-            case '4':
-            case '5':
-            case '6':
-            case '7':
-            case '8':
-            case '9':
-                return true;
+        case '1':
+        case '2':
+        case '3':
+        case '4':
+        case '5':
+        case '6':
+        case '7':
+        case '8':
+        case '9':
+            return true;
         }
         return false;
     }
@@ -647,17 +650,17 @@ private:
     {
         switch (c)
         {
-            case '0':
-            case '1':
-            case '2':
-            case '3':
-            case '4':
-            case '5':
-            case '6':
-            case '7':
-            case '8':
-            case '9':
-                return true;
+        case '0':
+        case '1':
+        case '2':
+        case '3':
+        case '4':
+        case '5':
+        case '6':
+        case '7':
+        case '8':
+        case '9':
+            return true;
         }
         return false;
     }
@@ -722,112 +725,112 @@ private:
         char cc = strat(string, i++);
         switch (cc)
         {
-            case 't':
-                return true;
-            case 'f':
-                return false;
-            case 'n':
-                return nil();
-            case 'Q':
-                return -(0 / _zero);
-            case 'N':
-                return (0 / _zero);
-            case 'I':
-                return (1 / _zero);
-            case 'i':
-                return -(1 / _zero);
-            case '"':
+        case 't':
+            return true;
+        case 'f':
+            return false;
+        case 'n':
+            return nil();
+        case 'Q':
+            return -(0 / _zero);
+        case 'N':
+            return (0 / _zero);
+        case 'I':
+            return (1 / _zero);
+        case 'i':
+            return -(1 / _zero);
+        case '"':
+        {
+            size_t nexti = i - 1;
+            do
             {
-                size_t nexti = i - 1;
-                do
+                nexti = string.find('"', nexti + 1);
+                if (nexti == std::string::npos)
                 {
-                    nexti = string.find('"', nexti + 1);
-                    if (nexti == std::string::npos)
-                    {
-                        throw smallfolk_exception("expect_object at %u was %c eof before string ends", i, cc);
-                    }
-                    ++nexti;
-                } while (strat(string, nexti) == '"');
-                size_t temp = i;
-                i = nexti;
-                return unescape_quotes(string.substr(temp, nexti - temp - 1));
-            }
-            case '0':
-            case '1':
-            case '2':
-            case '3':
-            case '4':
-            case '5':
-            case '6':
-            case '7':
-            case '8':
-            case '9':
-            case '-':
-            case '.':
-                return expect_number(string, --i);
-            case '{':
+                    throw smallfolk_exception("expect_object at %u was %c eof before string ends", i, cc);
+                }
+                ++nexti;
+            } while (strat(string, nexti) == '"');
+            size_t temp = i;
+            i = nexti;
+            return unescape_quotes(string.substr(temp, nexti - temp - 1));
+        }
+        case '0':
+        case '1':
+        case '2':
+        case '3':
+        case '4':
+        case '5':
+        case '6':
+        case '7':
+        case '8':
+        case '9':
+        case '-':
+        case '.':
+            return expect_number(string, --i);
+        case '{':
+        {
+            LuaVal nt(TTABLE);
+            unsigned int j = 1;
+            tables.push_back(nt);
+            if (strat(string, i) == '}')
             {
-                LuaVal nt(TTABLE);
-                unsigned int j = 1;
-                tables.push_back(nt);
-                if (strat(string, i) == '}')
+                ++i;
+                return std::move(nt);
+            }
+            while (true)
+            {
+                LuaVal k = expect_object(string, i, tables);
+                if (strat(string, i) == ':')
+                {
+                    nt.set(k, expect_object(string, ++i, tables));
+                }
+                else
+                {
+                    nt.set(j, k);
+                    ++j;
+                }
+                char head = strat(string, i);
+                if (head == ',')
+                    ++i;
+                else if (head == '}')
                 {
                     ++i;
-                    return nt;
+                    return std::move(nt);
                 }
-                while (true)
+                else
                 {
-                    LuaVal k = expect_object(string, i, tables);
-                    if (strat(string, i) == ':')
-                    {
-                        nt.set(k, expect_object(string, ++i, tables));
-                    }
-                    else
-                    {
-                        nt.set(j, k);
-                        ++j;
-                    }
-                    char head = strat(string, i);
-                    if (head == ',')
-                        ++i;
-                    else if (head == '}')
-                    {
-                        ++i;
-                        return nt;
-                    }
-                    else
-                    {
-                        throw smallfolk_exception("expect_object at %u was %c unexpected character %c", i, cc, head);
-                    }
+                    throw smallfolk_exception("expect_object at %u was %c unexpected character %c", i, cc, head);
                 }
-                break;
             }
-            /*
-            case '@':
-            {
-                std::string::size_type x = i;
-                for (; x < string.length(); ++x)
-                {
-                    if (!isdigit(string[x]))
-                        break;
-                }
-                std::string substr = string.substr(i, x - i);
-                size_t index = std::stoul(substr.c_str());
-                if (index >= 1 && index <= tables.size())
-                {
-                    i += substr.length();
-                    return tables[index - 1];
-                }
+            break;
+        }
+        /*
+        case '@':
+        {
+        std::string::size_type x = i;
+        for (; x < string.length(); ++x)
+        {
+        if (!isdigit(string[x]))
+        break;
+        }
+        std::string substr = string.substr(i, x - i);
+        size_t index = std::stoul(substr.c_str());
+        if (index >= 1 && index <= tables.size())
+        {
+        i += substr.length();
+        return tables[index - 1];
+        }
 
-                throw smallfolk_exception("expect_object at %u was %c invalid index %u", i, cc, index);
-                break;
-            }
-            */
-            default:
-            {
-                throw smallfolk_exception("expect_object at %u was %c", i, cc);
-                break;
-            }
+        throw smallfolk_exception("expect_object at %u was %c invalid index %u", i, cc, index);
+        break;
+        }
+        */
+        default:
+        {
+            throw smallfolk_exception("expect_object at %u was %c", i, cc);
+            break;
+        }
         }
         return nil();
     }
