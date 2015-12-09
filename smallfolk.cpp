@@ -1,6 +1,3 @@
-// ignore useless warnings
-#pragma warning(disable: 4514 4711)
-
 #include "smallfolk.h"
 
 LuaVal const & LuaVal::nil()
