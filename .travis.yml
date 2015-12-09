@@ -1,0 +1,15 @@
+language: cpp
+
+compiler:
+  - clang
+  - gcc
+
+install:
+  - mkdir bin
+  - cd bin
+  - cmake ../
+  - cd ..
+
+script:
+  - cd bin
+  - make
