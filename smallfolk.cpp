@@ -399,7 +399,7 @@ size_t LuaVal::dump_object(LuaVal const & object, unsigned int nmemo, MEMO & mem
         acc << '"';
         break;
     case TNUMBER:
-        if (!isfinite(object.d))
+        if (!std::isfinite(object.d))
         {
             // slightly ugly :(
             std::string nn = tostring(object.d);
@@ -506,8 +506,7 @@ bool LuaVal::is_digit(char c)
 char LuaVal::strat(std::string const & string, std::string::size_type i)
 {
     if (i != std::string::npos &&
-        i < string.length() &&
-        i >= 0)
+        i < string.length())
         return string.at(i);
     return '\0'; // bad?
 }
