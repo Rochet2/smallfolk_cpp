@@ -1,7 +1,7 @@
 #smallfolk_cpp
 
 Insipred and supposedly works with the pure lua serializer Smallfolk.
-Most serializer logic is borrowed from gvx/Smallfolk.
+Most serializer logic is borrowed from gvx/Smallfolk. The creator of original smallfolk was notified.
 https://github.com/gvx/Smallfolk
 
 Smallfolk_cpp is a C++ serializer and deserializer. It was created to be used with smallfolk lua serializer.
@@ -73,7 +73,7 @@ To put this into any kind of perspective, here is the print of the serialized da
 
 ##Table cycles
 
-**Note: This feature was disabled cause of difficult implementing in C++ and possibly unwanted infinite cycles. All table assigning create copies now in the C++ code and no @ notation is recognised for serializing or deserializing.**
+**Note: This feature was disabled cause of difficult implementing in C++ and possibly unwanted infinite cycles. All table assigning create copies now in the C++ code and no @ notation is recognised for serializing or deserializing. Any such references are set to nil when deserializing. Any @ references are otherwise deep copies in the C++ code **
 
 From original smallfolk
 > Sometimes you have strange, non-euclidean geometries in your table
@@ -102,30 +102,26 @@ std::cout << cthulhu.dumps() << std::endl;
 ##Security
 
 No comments.
+But seriously though - I cannot guarantee that this code is secure. All I can give is that I have implemented exceptions best I know to handle unexpected situations.
 
 ##Tested
 
 Tested very little.
 _Should_ contain no crashes or memory leaks.
+I do not use this atm. This was created for others to use on a whim.
 
 ##Reference
 
 ###try-catch
-Most functions can throw smallfolk_exception and some string library errors and more.
+Most functions can throw `smallfolk_exception` and some string library errors and more.
 One method for try catching errors you can use is this:
 ```C++
-std::string errmsg;
 try {
   // code
 }
 catch (std::exception& e) {
-  errmsg = e.what();
+    std::cout << e.what() << std::endl;
 }
-catch (...) {
-  errmsg = "Smallfolk_cpp error";
-}
-if (!errmsg.empty())
-  std::cout << errmsg << std::endl;
 ```
 
 ###(de)serializing
@@ -150,6 +146,7 @@ LuaVal i(-678);
 LuaVal u(0xFFFFFFF);
 LuaVal t(TTABLE);
 LuaVal t2 = LuaVal::table();
+LuaVal t3 = { 1, 2, 3 };
 ```
 
 ###static nil

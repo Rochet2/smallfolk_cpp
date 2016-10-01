@@ -12,11 +12,11 @@
 #include <memory>
 #include <cassert>
 #include <functional>
-#include <exception>
+#include <stdexcept>
 #include <stdarg.h>
 #include <stdio.h>
 
-class smallfolk_exception : public std::exception
+class smallfolk_exception : public std::logic_error
 {
 public:
     static size_t const size = 2048;
@@ -86,7 +86,7 @@ public:
     LuaVal(LuaTable const & luatable);
     LuaVal(LuaVal const & val);
     LuaVal(LuaVal && val);
-    LuaVal(std::initializer_list<LuaVal const> l);
+    LuaVal(std::initializer_list<LuaVal const> const & l);
 
     bool isstring() const;
     bool isnumber() const;
@@ -129,14 +129,14 @@ public:
 
     // get-set-table - note, adds key-nil pair if not existing
     // nil key throws error
-    LuaVal & operator [](LuaVal const & k)
+    LuaVal & operator [](LuaVal && k) const
     {
         if (!istable())
             throw smallfolk_exception("using [] on non table object");
         if (k.isnil())
             throw smallfolk_exception("using [] with nil key");
         LuaTable & tbl = (*tbl_ptr);
-        return tbl[k];
+        return tbl[std::move(k)];
     }
 
     // get a number value
@@ -197,8 +197,7 @@ public:
         tag = val.tag;
         if (istable())
         {
-            tbl_ptr = TblPtr();
-            *tbl_ptr = *val.tbl_ptr.get();
+            tbl_ptr.reset(new LuaTable(*val.tbl_ptr));
         }
         else
             tbl_ptr = nullptr;
@@ -214,13 +213,28 @@ public:
         return *this;
     }
 
+    LuaVal& operator=(LuaVal && val)
+    {
+        tag = std::move(val.tag);
+        tbl_ptr = std::move(val.tbl_ptr);
+        s = std::move(val.s);
+        d = std::move(val.d);
+        b = std::move(val.b);
+
+        if (istable())
+        {
+            if (!tbl_ptr)
+                throw smallfolk_exception("creating table LuaVal with nullptr table");
+        }
+        return *this;
+    }
+
 private:
     typedef std::vector<LuaVal> TABLES;
     typedef std::unordered_map<LuaVal, unsigned int, LuaValHasher> MEMO;
     typedef std::stringstream ACC;
 
     LuaTypeTag tag;
-
     TblPtr tbl_ptr;
     std::string s;
     // int64_t i; // lua 5.3 support?
@@ -232,21 +246,13 @@ private:
     static std::string tostring(TblPtr const & ptr);
 
     static size_t dump_type_table(LuaVal const & object, unsigned int nmemo, MEMO& memo, ACC& acc);
-
     static size_t dump_object(LuaVal const & object, unsigned int nmemo, MEMO& memo, ACC& acc);
-
     static std::string escape_quotes(const std::string &before);
-
     static std::string unescape_quotes(const std::string &before);
-
     static bool nonzero_digit(char c);
-
     static bool is_digit(char c);
-
     static char strat(std::string const & string, std::string::size_type i);
-
     static LuaVal expect_number(std::string const & string, size_t& start);
-
     static LuaVal expect_object(std::string const & string, size_t& i, TABLES& tables);
 };
 

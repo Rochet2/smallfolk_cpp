@@ -5,6 +5,7 @@ int main()
     {
         std::cout << "Test values" << std::endl;
 
+        std::cout << "Testing different double corner values" << std::endl;
         double _zero = 0.0;
         LuaVal tn = LuaVal::table();
         tn[1] = -(0 / _zero);
@@ -16,6 +17,7 @@ int main()
         std::cout << tn[1].tostring() << " " << tn[2].tostring() << " " << tn[3].tostring() << " " << tn[4].tostring() << std::endl;
         std::cout << std::endl;
 
+        std::cout << "Testing creation testing and printing of all value types" << std::endl;
         LuaVal implicit_test = -123;
         LuaVal copy_test(implicit_test);
         LuaVal copy_test2 = implicit_test;
@@ -28,6 +30,7 @@ int main()
         LuaVal u(0xFFFFFFFF);
         LuaVal t(TTABLE);
         LuaVal t2 = LuaVal::table();
+        LuaVal t3 = { 1, 2, 3 };
 
         assert(implicit_test.isnumber());
         assert(copy_test.isnumber());
@@ -41,6 +44,7 @@ int main()
         assert(u.isnumber());
         assert(t.istable());
         assert(t2.istable());
+        assert(t3.istable());
 
         std::cout << implicit_test.tostring() << std::endl;
         std::cout << copy_test.tostring() << std::endl;
@@ -54,22 +58,22 @@ int main()
         std::cout << u.tostring() << std::endl;
         std::cout << t.tostring() << std::endl;
         std::cout << t2.tostring() << std::endl;
+        std::cout << t3.tostring() << std::endl;
         std::cout << std::endl;
 
+        std::cout << "Testing exception handling" << std::endl;
         std::string errmsg;
         try
         {
             LuaVal h(-7);
-            std::string str = h.str(); // error
+            std::string str = h.str(); // error, h is not a string
         }
-        catch (std::exception& e)
+        catch (std::exception const & e)
         {
+            // caught an exception, possibly smallfolk_cpp exception
             errmsg = e.what();
         }
-        catch (...)
-        {
-            errmsg = "Smallfolk_cpp error";
-        }
+        // printing caught error if any
         if (!errmsg.empty())
             std::cout << errmsg << std::endl << std::endl;
     }
@@ -99,6 +103,10 @@ int main()
         std::cout << std::endl;
     }
 
+    /*
+    // This is disabled because circular references cause memleak or need complex handling for memory management
+    // Circular references should not be used and are ignored (nil) when parsed
+    // Using a circular reference in C++ code will cause an exception to be thrown
     {
         std::cout << "Cthulhu" << std::endl;
 
@@ -116,31 +124,67 @@ int main()
         // {"fhtagn":@1,1:{{@2:@3}:{@4:@1}},2:@3,3:@4}
         std::cout << std::endl;
     }
+    */
 
     {
-        std::cout << "test []" << std::endl;
+        std::cout << "Table inside itself" << std::endl;
+        try
+        {
+            LuaVal tbl(TTABLE);
+            tbl[1] = tbl;
+            std::cout << tbl.dumps() << std::endl;
+        }
+        catch (std::exception const & e)
+        {
+            std::cout << "Its not allowed :( See below for exception" << std::endl;
+            std::cout << e.what() << std::endl;
+        }
+        std::cout << std::endl;
+    }
+
+    {
+        std::cout << "Table initializer list coolness" << std::endl;
+        std::cout << "Watch out for quirks though!" << std::endl;
+        std::cout << "What stuff evaluates to depends on your compiler and C++ version!" << std::endl;
+        std::cout << "{} evaluates to nil" << std::endl;
+        std::cout << "{{}} evaluates to a nil inside a table" << std::endl;
+        std::cout << "{5} evaluates to 5 being inside a table" << std::endl;
+        std::cout << "{LuaVal(5)} evaluates to just 5 instead of being a 5 inside a table" << std::endl;
+
+        // Watch out for quirks though as seen in the serialized output: http://stackoverflow.com/questions/26947704/implicit-conversion-failure-from-initializer-list
+        LuaVal nested = { {}, {{}}, { 3 }, { LuaVal(4) } };
+        std::cout << nested.dumps() << std::endl;
+        std::cout << std::endl;
+    }
+
+    {
+        std::cout << "test accessing table with [] operator" << std::endl;
+        std::cout << "Note that table keys cannot be accessed!" << std::endl;
+        std::cout << "Notice the excessive amount of nils left behind!" << std::endl;
 
         LuaVal table(TTABLE);
         table[1] = "test";
-        table[2] = 77.234;
-        table[3] = -324;
-        table[false] = table[2];
-        table["self copy"] = table;
+        table[2]; // created nil
+        std::cout << table.dumps() << std::endl;
+        table[1] = LuaVal(); // removing value through setting it to nil
+        std::cout << table.dumps() << std::endl;
         table[table] = "table as key?";
-        std::cout << table["self copy"][3].num() << std::endl;
+        std::cout << table.dumps() << std::endl;
+        std::cout << table[table].tostring() << std::endl;
         std::cout << std::endl;
     }
 
     {
         std::cout << "test .get.set.rem" << std::endl;
+        std::cout << "Note that table keys cannot be accessed!" << std::endl;
 
         LuaVal table(TTABLE);
-        table.set(1, "test").set(2, 77.234).set(3, -324);
-        table.set(false, table.get(2));
-        table.set("self copy", table);
+        table.set(1, "test").set(2, table.get(1)).set(3, -324);
+        std::cout << table.dumps() << std::endl;
+        table.rem(1).rem(2).set(3, LuaVal());
+        std::cout << table.dumps() << std::endl;
         table.set(table, "table as key?");
-        std::cout << table.get("self copy").get(3).num() << std::endl;
-        table.rem(3).rem(2);
+        std::cout << table.get(table).tostring() << std::endl;
         std::cout << std::endl;
     }
 

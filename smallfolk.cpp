@@ -82,7 +82,7 @@ LuaVal::LuaVal(LuaTable const & luatable) : tag(TTABLE), tbl_ptr(new LuaTable(lu
         throw smallfolk_exception("creating table LuaVal with nullptr table");
 }
 
-LuaVal::LuaVal(LuaVal const & val) : tag(val.tag), tbl_ptr(val.tag == TTABLE ? new LuaTable(*val.tbl_ptr.get()) : nullptr), s(val.s), d(val.d), b(val.b)
+LuaVal::LuaVal(LuaVal const & val) : tag(val.tag), tbl_ptr(val.tag == TTABLE && val.tbl_ptr ? new LuaTable(*val.tbl_ptr) : nullptr), s(val.s), d(val.d), b(val.b)
 {
     if (istable())
     {
@@ -95,14 +95,19 @@ LuaVal::LuaVal(LuaVal && val) : tag(val.tag), tbl_ptr(std::move(val.tbl_ptr)), s
 {
 }
 
-LuaVal::LuaVal(std::initializer_list<LuaVal const> l) : tag(TTABLE), tbl_ptr(new LuaTable()), d(0), b(false)
+LuaVal::LuaVal(std::initializer_list<LuaVal const> const & l) : tag(TTABLE), tbl_ptr(new LuaTable()), d(0), b(false)
 {
     if (!tbl_ptr)
         throw smallfolk_exception("creating table LuaVal with nullptr table");
     LuaTable & tbl = *tbl_ptr;
     unsigned int i = 0;
     for (auto&& v : l)
-        tbl[++i] = v;
+    {
+        if (v.isnil())
+            ++i;
+        else
+            tbl[++i] = v;
+    }
 }
 
 bool LuaVal::isstring() const { return tag == TSTRING; }
@@ -271,15 +276,7 @@ std::string LuaVal::dumps(std::string * errmsg) const
     catch (std::exception& e)
     {
         if (errmsg)
-        {
-            *errmsg += "Smallfolk_cpp error: ";
             *errmsg += e.what();
-        }
-    }
-    catch (...)
-    {
-        if (errmsg)
-            *errmsg += "Smallfolk_cpp error";
     }
     return std::string();
 }
@@ -295,15 +292,7 @@ LuaVal LuaVal::loads(std::string const & string, std::string * errmsg)
     catch (std::exception& e)
     {
         if (errmsg)
-        {
-            *errmsg += "Smallfolk_cpp error: ";
             *errmsg += e.what();
-        }
-    }
-    catch (...)
-    {
-        if (errmsg)
-            *errmsg += "Smallfolk_cpp error";
     }
     return nil();
 }
@@ -669,13 +658,13 @@ LuaVal LuaVal::expect_object(std::string const & string, size_t & i, TABLES & ta
     return nil();
 }
 
-smallfolk_exception::smallfolk_exception(const char * format, ...) : std::exception()
+smallfolk_exception::smallfolk_exception(const char * format, ...) : std::logic_error("Smallfolk exception")
 {
     char buffer[size];
     va_list args;
     va_start(args, format);
     vsnprintf(buffer, size, format, args);
-    errmsg = buffer;
+    errmsg = std::string("Smallfolk: ") + buffer;
     va_end(args);
 }
 

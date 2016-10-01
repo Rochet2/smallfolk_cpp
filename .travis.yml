@@ -6,10 +6,6 @@ compiler:
 
 install:
   - if [ "$CXX" = "g++" ]; then export CXX="g++-4.8" CC="gcc-4.8"; fi
-  - mkdir bin
-  - cd bin
-  - cmake ../
-  - cd ..
 
 addons:
   apt:
@@ -21,5 +17,8 @@ addons:
     - clang
 
 script:
+  - mkdir bin
   - cd bin
+  - cmake ../
   - make
+  - ./smallfolk_cpp
