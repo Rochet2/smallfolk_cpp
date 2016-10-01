@@ -115,30 +115,6 @@ public:
     // table.remove, return self
     LuaVal & remove(LuaVal const & pos = nil());
 
-    // gettable - note, adds key-nil pair if not existing
-    // nil key throws error
-    LuaVal operator [](LuaVal const & k) const
-    {
-        if (!istable())
-            throw smallfolk_exception("using [] on non table object");
-        if (k.isnil())
-            throw smallfolk_exception("using [] with nil key");
-        LuaTable & tbl = (*tbl_ptr);
-        return tbl[k];
-    }
-
-    // get-set-table - note, adds key-nil pair if not existing
-    // nil key throws error
-    LuaVal & operator [](LuaVal && k) const
-    {
-        if (!istable())
-            throw smallfolk_exception("using [] on non table object");
-        if (k.isnil())
-            throw smallfolk_exception("using [] with nil key");
-        LuaTable & tbl = (*tbl_ptr);
-        return tbl[std::move(k)];
-    }
-
     // get a number value
     double num() const;
     // get a boolean value

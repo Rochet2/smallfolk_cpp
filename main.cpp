@@ -7,14 +7,10 @@ int main()
 
         std::cout << "Testing different double corner values" << std::endl;
         double _zero = 0.0;
-        LuaVal tn = LuaVal::table();
-        tn[1] = -(0 / _zero);
-        tn[2] = (0 / _zero);
-        tn[3] = (1 / _zero);
-        tn[4] = -(1 / _zero);
+        LuaVal tn = { -(0 / _zero), (0 / _zero), (1 / _zero), -(1 / _zero) };
         std::cout << tn.dumps() << std::endl;
         std::cout << -(0 / _zero) << " " << (0 / _zero) << " " << (1 / _zero) << " " << -(1 / _zero) << std::endl;
-        std::cout << tn[1].tostring() << " " << tn[2].tostring() << " " << tn[3].tostring() << " " << tn[4].tostring() << std::endl;
+        std::cout << tn.get(1).tostring() << " " << tn.get(2).tostring() << " " << tn.get(3).tostring() << " " << tn.get(4).tostring() << std::endl;
         std::cout << std::endl;
 
         std::cout << "Testing creation testing and printing of all value types" << std::endl;
@@ -83,9 +79,9 @@ int main()
 
         // create a lua table and set some values to it
         LuaVal table = LuaVal::table();
-        table[1] = "Hello";
-        table["test"] = "world";
-        table[67.5] = -234.5;
+        table.set(1, "Hello");
+        table.set("test", "world");
+        table.set(67.5, -234.5);
 
         // serialize the table
         std::string serialized = table.dumps();
@@ -98,7 +94,7 @@ int main()
         LuaVal deserialized = LuaVal::loads(serialized);
 
         // print the values from deserialized result table
-        std::cout << deserialized[1].str() << " " << deserialized["test"].str() << " " << deserialized[67.5].num() << std::endl;
+        std::cout << deserialized.get(1).str() << " " << deserialized.get("test").str() << " " << deserialized.get(67.5).num() << std::endl;
         // Example output: Hello world -234.5
         std::cout << std::endl;
     }
@@ -124,23 +120,22 @@ int main()
         // {"fhtagn":@1,1:{{@2:@3}:{@4:@1}},2:@3,3:@4}
         std::cout << std::endl;
     }
-    */
 
     {
         std::cout << "Table inside itself" << std::endl;
         try
         {
             LuaVal tbl(TTABLE);
-            tbl[1] = tbl;
+            tbl.set(1, tbl);
             std::cout << tbl.dumps() << std::endl;
         }
         catch (std::exception const & e)
         {
-            std::cout << "Its not allowed :( See below for exception" << std::endl;
             std::cout << e.what() << std::endl;
         }
         std::cout << std::endl;
     }
+    */
 
     {
         std::cout << "Table initializer list coolness" << std::endl;
@@ -163,19 +158,18 @@ int main()
         std::cout << "Notice the excessive amount of nils left behind!" << std::endl;
 
         LuaVal table(TTABLE);
-        table[1] = "test";
-        table[2]; // created nil
+        table.set(1, "test");
         std::cout << table.dumps() << std::endl;
-        table[1] = LuaVal(); // removing value through setting it to nil
+        table.set(1, LuaVal()); // removing value through setting it to nil
         std::cout << table.dumps() << std::endl;
-        table[table] = "table as key?";
+        table.set(table, "table as key?");
         std::cout << table.dumps() << std::endl;
-        std::cout << table[table].tostring() << std::endl;
+        std::cout << table.get(table).tostring() << std::endl;
         std::cout << std::endl;
     }
 
     {
-        std::cout << "test .get.set.rem" << std::endl;
+        std::cout << "test .(key).(key, val).rem(key)" << std::endl;
         std::cout << "Note that table keys cannot be accessed!" << std::endl;
 
         LuaVal table(TTABLE);

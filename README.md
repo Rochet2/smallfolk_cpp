@@ -39,9 +39,9 @@ You use, distribute and extend Smallfolk_cpp under the terms of the MIT license.
 
 // create a lua table and set some values to it
 LuaVal table = LuaVal::table();
-table[1] = "Hello";
-table["test"] = "world";
-table[67.5] = -234.5;
+table.set(1, "Hello");
+table.set("test", "world");
+table.set(67.5, -234.5);
 
 // serialize the table
 std::string serialized = table.dumps();
@@ -54,7 +54,7 @@ std::cout << serialized << std::endl;
 LuaVal deserialized = LuaVal::loads(serialized);
 
 // print the values from deserialized result table
-std::cout << deserialized[1].str() << " " << deserialized["test"].str() << " " << deserialized[67.5].num() << std::endl;
+std::cout << deserialized.get(1).str() << " " << deserialized.get("test").str() << " " << deserialized.get(67.5).num() << std::endl;
 // Example output: Hello world -234.5
 ```
 
@@ -81,23 +81,23 @@ From original smallfolk
 > some other serialization libraries (or anything that produces JSON) cry "Iä!
 > Iä! Cthulhu fhtagn!" and give up &mdash; or worse, silently produce incorrect
 > data.
-
-```C++
-#include smallfolk.h
-
-// Essentially {{},{},{}}
-LuaVal cthulhu(TTABLE);
-cthulhu[1] = LuaVal(TTABLE);
-cthulhu[2] = LuaVal(TTABLE);
-cthulhu[3] = LuaVal(TTABLE);
-cthulhu["fhtagn"] = cthulhu;
-cthulhu[1][cthulhu[2]] = cthulhu[3];
-cthulhu[2][cthulhu[1]] = cthulhu[2];
-cthulhu[3][cthulhu[3]] = cthulhu;
-std::cout << cthulhu.dumps() << std::endl;
-// prints:
-// {"fhtagn":@1,1:{{@2:@3}:{@4:@1}},2:@3,3:@4}
-```
+>
+> ```C++
+> #include smallfolk.h
+>
+> // Essentially {{},{},{}}
+> LuaVal cthulhu(TTABLE);
+> cthulhu[1] = LuaVal(TTABLE);
+> cthulhu[2] = LuaVal(TTABLE);
+> cthulhu[3] = LuaVal(TTABLE);
+> cthulhu["fhtagn"] = cthulhu;
+> cthulhu[1][cthulhu[2]] = cthulhu[3];
+> cthulhu[2][cthulhu[1]] = cthulhu[2];
+> cthulhu[3][cthulhu[3]] = cthulhu;
+> std::cout << cthulhu.dumps() << std::endl;
+> // prints:
+> // {"fhtagn":@1,1:{{@2:@3}:{@4:@1}},2:@3,3:@4}
+> ```
 
 ##Security
 
@@ -207,21 +207,7 @@ luaval.tbl()
 ```
 
 ###table functions
-LuaVal representing a table offers two ways of getting and setting values.  
-You can use lua table like a map. It offers the `[]` operator for accessing an element by key. However the operator creates nils as values by default if the key does not exist. Also it throws if you use nil as a key or use it on a non table object.
-Example usage:
-```C++
-LuaVal table(TTABLE);
-table[1] = "test";
-table[2] = 77.234;
-table[3] = -324;
-table[false] = table[2];
-table["self copy"] = table;
-table[table] = "table as key?";
-std::cout << table["self copy"][3].num() << std::endl;
-```
-
-The second way of accessing and inserting map elements are the get and set member functions `luaval.get(key)`, `luaval.set(key, value)`.
+The way of accessing and inserting map elements are the get and set member functions `luaval.get(key)`, `luaval.set(key, value)`.
 The function `set` returns the table, so you can chain it to set multiple values.
 These functions do not throw unless you use them on non table objects. They also do not create default values for nonexisting keys and when a value is set as nil, it will be erased.
 An additional method for erasing data with a key is `luaval.rem(key)` which also returns the table and throws only when used on a non table object.
