@@ -1,5 +1,7 @@
 #smallfolk_cpp
 
+[![Build Status](https://travis-ci.org/Rochet2/smallfolk_cpp.svg?branch=master)](https://travis-ci.org/Rochet2/smallfolk_cpp)
+
 Insipred and supposedly works with the pure lua serializer Smallfolk.
 Most serializer logic is borrowed from gvx/Smallfolk. The creator of original smallfolk was notified.
 https://github.com/gvx/Smallfolk
