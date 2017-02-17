@@ -149,10 +149,8 @@ public:
             return d == rhs.d;
         case TTABLE:
             return tbl_ptr == rhs.tbl_ptr;
-        default:
-            throw smallfolk_exception("operator== invalid or unhandled tag %i", tag);
         }
-        return false;
+        throw smallfolk_exception("operator== invalid or unhandled tag %i", tag);
     }
 
     bool operator!=(LuaVal const& rhs) const

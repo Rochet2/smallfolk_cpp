@@ -25,7 +25,6 @@ std::string LuaVal::tostring() const
         return tostring(tbl_ptr);
     }
     throw smallfolk_exception("tostring invalid or unhandled tag %i", tag);
-    return std::string();
 }
 
 LuaVal::LuaVal(const LuaTypeTag tag) : tag(tag), tbl_ptr(tag == TTABLE ? new LuaTable() : nullptr), d(0), b(false)
