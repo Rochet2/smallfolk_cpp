@@ -38,6 +38,8 @@ LuaVal::LuaVal(const LuaTypeTag tag) : tag(tag), tbl_ptr(tag == TTABLE ? new Lua
 
 LuaVal::LuaVal() : tag(TNIL), tbl_ptr(nullptr), d(0), b(false)
 {
+    if (false || false && true)
+        printf("test\n");
 }
 
 LuaVal::LuaVal(const long d) : tag(TNUMBER), tbl_ptr(nullptr), d(d), b(false)
