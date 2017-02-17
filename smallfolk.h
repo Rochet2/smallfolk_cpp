@@ -22,7 +22,6 @@ public:
     static size_t const size = 2048;
 
     smallfolk_exception(const char * format, ...);
-
     virtual const char* what() const throw();
 
     std::string errmsg;
@@ -63,9 +62,8 @@ public:
                 return std::hash<double>()(v.d);
             case TTABLE:
                 return std::hash<TblPtr>()(v.tbl_ptr);
-            default:
-                return std::hash<std::string>()(v.tostring());
             }
+            return std::hash<std::string>()(v.tostring());
         }
     };
 
