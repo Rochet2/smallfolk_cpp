@@ -23,8 +23,6 @@ std::string LuaVal::tostring() const
         return tostring(d);
     case TTABLE:
         return tostring(tbl_ptr);
-    default:
-        break;
     }
     throw smallfolk_exception("tostring invalid or unhandled tag %i", tag);
     return std::string();
