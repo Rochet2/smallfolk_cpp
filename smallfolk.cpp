@@ -1,10 +1,43 @@
 #include "smallfolk.h"
+#include <map>
+#include <iomanip> // std::setprecision
+#include <sstream> // std::stringstream
+#include <cmath> // std::floor
+#include <stdarg.h> // va_start
+#include <functional> // std::hash
 
-LuaVal const & LuaVal::nil()
+namespace Serializer
 {
-    static LuaVal const nil;
-    return nil;
+    typedef std::vector<LuaVal> TABLES;
+    typedef std::unordered_map<LuaVal, unsigned int, LuaVal::LuaValHasher> MEMO;
+    typedef std::stringstream ACC;
+
+    // sprintf is ~50% faster than other solutions
+    inline std::string tostring(const double d)
+    {
+        char arr[128];
+        sprintf(arr, "%.17g", d);
+        return arr;
+    }
+    inline std::string tostring(LuaVal::TblPtr const & ptr)
+    {
+        char arr[128];
+        sprintf(arr, "table: %p", ptr.get());
+        return arr;
+    }
+
+    size_t dump_type_table(LuaVal const & object, unsigned int nmemo, MEMO& memo, ACC& acc);
+    size_t dump_object(LuaVal const & object, unsigned int nmemo, MEMO& memo, ACC& acc);
+    std::string escape_quotes(const std::string &before);
+    std::string unescape_quotes(const std::string &before);
+    bool nonzero_digit(char c);
+    bool is_digit(char c);
+    char strat(std::string const & string, std::string::size_type i);
+    LuaVal expect_number(std::string const & string, size_t& start);
+    LuaVal expect_object(std::string const & string, size_t& i, TABLES& tables);
 }
+
+LuaVal const LuaVal::nil;
 
 std::string LuaVal::tostring() const
 {
@@ -20,17 +53,33 @@ std::string LuaVal::tostring() const
     case TSTRING:
         return s;
     case TNUMBER:
-        return tostring(d);
+        return Serializer::tostring(d);
     case TTABLE:
-        return tostring(tbl_ptr);
+        return Serializer::tostring(tbl_ptr);
     }
     throw smallfolk_exception("tostring invalid or unhandled tag %i", tag);
 }
 
+size_t LuaVal::LuaValHasher::operator()(LuaVal const & v) const
+{
+    switch (v.tag)
+    {
+    case TBOOL:
+        return std::hash<bool>()(v.b);
+    case TNIL:
+        return std::hash<int>()(0);
+    case TSTRING:
+        return std::hash<std::string>()(v.s);
+    case TNUMBER:
+        return std::hash<double>()(v.d);
+    case TTABLE:
+        return std::hash<TblPtr>()(v.tbl_ptr);
+    }
+    return std::hash<std::string>()(v.tostring());
+}
+
 LuaVal::LuaVal(const LuaTypeTag tag) : tag(tag), tbl_ptr(tag == TTABLE ? new LuaTable() : nullptr), d(0), b(false)
 {
-    if (istable() && !tbl_ptr)
-        throw smallfolk_exception("creating table LuaVal with nullptr table");
 }
 
 LuaVal::LuaVal() : tag(TNIL), tbl_ptr(nullptr), d(0), b(false)
@@ -75,29 +124,20 @@ LuaVal::LuaVal(const bool b) : tag(TBOOL), tbl_ptr(nullptr), d(0), b(b)
 
 LuaVal::LuaVal(LuaTable const & luatable) : tag(TTABLE), tbl_ptr(new LuaTable(luatable)), d(0), b(false)
 {
-    if (!tbl_ptr)
-        throw smallfolk_exception("creating table LuaVal with nullptr table");
 }
 
-LuaVal::LuaVal(LuaVal const & val) : tag(val.tag), tbl_ptr(val.tag == TTABLE && val.tbl_ptr ? new LuaTable(*val.tbl_ptr) : nullptr), s(val.s), d(val.d), b(val.b)
+LuaVal::LuaVal(LuaVal const & val) : tag(val.tag), tbl_ptr(val.tag == TTABLE ? val.tbl_ptr ? new LuaTable(*val.tbl_ptr) : new LuaTable() : nullptr), s(val.s), d(val.d), b(val.b)
 {
-    if (istable())
-    {
-        if (!tbl_ptr)
-            throw smallfolk_exception("creating table LuaVal with nullptr table");
-    }
 }
 
-LuaVal::LuaVal(LuaVal && val) : tag(val.tag), tbl_ptr(std::move(val.tbl_ptr)), s(std::move(val.s)), d(val.d), b(val.b)
+LuaVal::LuaVal(LuaVal && val) : tag(std::move(val.tag)), tbl_ptr(std::move(val.tbl_ptr)), s(std::move(val.s)), d(std::move(val.d)), b(std::move(val.b))
 {
 }
 
 LuaVal::LuaVal(std::initializer_list<LuaVal const> const & l) : tag(TTABLE), tbl_ptr(new LuaTable()), d(0), b(false)
 {
-    if (!tbl_ptr)
-        throw smallfolk_exception("creating table LuaVal with nullptr table");
     LuaTable & tbl = *tbl_ptr;
-    unsigned int i = 0;
+    size_t i = 0;
     for (auto&& v : l)
     {
         if (v.isnil())
@@ -107,40 +147,46 @@ LuaVal::LuaVal(std::initializer_list<LuaVal const> const & l) : tag(TTABLE), tbl
     }
 }
 
-bool LuaVal::isstring() const { return tag == TSTRING; }
-
-bool LuaVal::isnumber() const { return tag == TNUMBER; }
-
-bool LuaVal::istable() const { return tag == TTABLE; }
-
-bool LuaVal::isbool() const { return tag == TBOOL; }
-
-bool LuaVal::isnil() const { return tag == TNIL; }
-
-LuaVal LuaVal::table(LuaTable arr)
+LuaVal & LuaVal::operator[](LuaVal const & k)
 {
-    return LuaVal(arr);
+    if (!istable())
+        throw smallfolk_exception("using [] on non table object");
+    if (k.isnil())
+        throw smallfolk_exception("using [] with nil key");
+    LuaTable & tbl = (*tbl_ptr);
+    return tbl[k];
 }
 
-LuaVal LuaVal::get(LuaVal const & k) const
+LuaVal const & LuaVal::get(LuaVal const & k) const
 {
     if (!istable())
         throw smallfolk_exception("using get on non table object");
-    if (k.isnil()) // on nil key do nothing
-        return nil();
+    if (k.isnil())
+        throw smallfolk_exception("using get with nil key");
     LuaTable & tbl = (*tbl_ptr);
-    auto it = tbl.find(k);
+    auto & it = tbl.find(k);
     if (it != tbl.end())
         return it->second;
-    return nil();
+    return nil;
+}
+
+bool LuaVal::has(LuaVal const & k) const
+{
+    if (!istable())
+        throw smallfolk_exception("using has on non table object");
+    if (k.isnil())
+        throw smallfolk_exception("using has with nil key");
+    LuaTable & tbl = (*tbl_ptr);
+    auto & it = tbl.find(k);
+    return it != tbl.end();
 }
 
 LuaVal & LuaVal::set(LuaVal const & k, LuaVal const & v)
 {
     if (!istable())
         throw smallfolk_exception("using set on non table object");
-    if (k.isnil()) // on nil key do nothing
-        return *this;
+    if (k.isnil())
+        throw smallfolk_exception("using set with nil key");
     LuaTable & tbl = (*tbl_ptr);
     if (v.isnil()) // on nil value erase key
         tbl.erase(k);
@@ -153,6 +199,8 @@ LuaVal & LuaVal::rem(LuaVal const & k)
 {
     if (!istable())
         throw smallfolk_exception("using rem on non table object");
+    if (k.isnil())
+        throw smallfolk_exception("using set with nil key");
     LuaTable & tbl = (*tbl_ptr);
     tbl.erase(k);
     return *this;
@@ -166,7 +214,7 @@ unsigned int LuaVal::len() const
     unsigned int i = 0;
     while (++i)
     {
-        auto it = tbl.find(i);
+        auto & it = tbl.find(i);
         if (it == tbl.end() || it->second.isnil())
             break;
     }
@@ -226,48 +274,15 @@ LuaVal & LuaVal::remove(LuaVal const & pos)
     return *this;
 }
 
-double LuaVal::num() const
-{
-    if (!isnumber())
-        throw smallfolk_exception("using num on non number object");
-    return d;
-}
-
-bool LuaVal::boolean() const
-{
-    if (!isbool())
-        throw smallfolk_exception("using boolean on non bool object");
-    return b;
-}
-
-std::string const & LuaVal::str() const
-{
-    if (!isstring())
-        throw smallfolk_exception("using str on non string object");
-    return s;
-}
-
-LuaVal::LuaTable const & LuaVal::tbl() const
-{
-    if (!istable())
-        throw smallfolk_exception("using tbl on non table object");
-    return *tbl_ptr;
-}
-
-LuaTypeTag LuaVal::GetTypeTag() const
-{
-    return tag;
-}
-
 std::string LuaVal::dumps(std::string * errmsg) const
 {
     try
     {
-        ACC acc;
+        Serializer::ACC acc;
         acc << std::setprecision(17); // min lua percision
         unsigned int nmemo = 0;
-        MEMO memo;
-        dump_object(*this, nmemo, memo, acc);
+        Serializer::MEMO memo;
+        Serializer::dump_object(*this, nmemo, memo, acc);
         return acc.str();
     }
     catch (std::exception& e)
@@ -282,33 +297,57 @@ LuaVal LuaVal::loads(std::string const & string, std::string * errmsg)
 {
     try
     {
-        TABLES tables;
+        Serializer::TABLES tables;
         size_t i = 0;
-        return std::move(expect_object(string, i, tables));
+        return Serializer::expect_object(string, i, tables);
     }
     catch (std::exception& e)
     {
         if (errmsg)
             *errmsg += e.what();
     }
-    return nil();
+    return LuaVal();
 }
 
-std::string LuaVal::tostring(const double d)
+bool LuaVal::operator==(LuaVal const& rhs) const
 {
-    char arr[128];
-    sprintf(arr, "%.17g", d);
-    return arr;
+    if (tag != rhs.tag)
+        return false;
+    switch (tag)
+    {
+    case TBOOL:
+        return b == rhs.b;
+    case TNIL:
+        return true;
+    case TSTRING:
+        return s == rhs.s;
+    case TNUMBER:
+        return d == rhs.d;
+    case TTABLE:
+        return tbl_ptr == rhs.tbl_ptr;
+    }
+    throw smallfolk_exception("operator== invalid or unhandled tag %i", tag);
 }
 
-std::string LuaVal::tostring(TblPtr const & ptr)
+LuaVal::operator bool() const
 {
-    char arr[128];
-    sprintf(arr, "table: %p", static_cast<const void*>(ptr.get()));
-    return arr;
+    return !isnil() && (!isbool() || boolean());
 }
 
-size_t LuaVal::dump_type_table(LuaVal const & object, unsigned int nmemo, MEMO & memo, ACC & acc)
+LuaVal& LuaVal::operator=(LuaVal const& val)
+{
+    tag = val.tag;
+    if (istable())
+        tbl_ptr.reset(new LuaTable(*val.tbl_ptr));
+    else
+        tbl_ptr = nullptr;
+    s = val.s;
+    d = val.d;
+    b = val.b;
+    return *this;
+}
+
+size_t Serializer::dump_type_table(LuaVal const & object, unsigned int nmemo, MEMO & memo, ACC & acc)
 {
     if (!object.istable())
         throw smallfolk_exception("using dump_type_table on non table object");
@@ -325,7 +364,7 @@ size_t LuaVal::dump_type_table(LuaVal const & object, unsigned int nmemo, MEMO &
     acc << '{';
     std::map<unsigned int, const LuaVal*> arr;
     std::unordered_map<const LuaVal*, const LuaVal*> hash;
-    for (auto&& v : *object.tbl_ptr)
+    for (auto&& v : object.tbl())
     {
         if (v.first.isnumber() && v.first.num() >= 1 && std::floor(v.first.num()) == v.first.num())
             arr[static_cast<unsigned int>(v.first.num())] = &v.second;
@@ -363,29 +402,29 @@ size_t LuaVal::dump_type_table(LuaVal const & object, unsigned int nmemo, MEMO &
         acc << l;
     }
     acc << '}';
-    return std::move(nmemo);
+    return nmemo;
 }
 
-size_t LuaVal::dump_object(LuaVal const & object, unsigned int nmemo, MEMO & memo, ACC & acc)
+size_t Serializer::dump_object(LuaVal const & object, unsigned int nmemo, MEMO & memo, ACC & acc)
 {
-    switch (object.tag)
+    switch (object.GetTypeTag())
     {
     case TBOOL:
-        acc << (object.b ? 't' : 'f');
+        acc << (object.boolean() ? 't' : 'f');
         break;
     case TNIL:
         acc << 'n';
         break;
     case TSTRING:
         acc << '"';
-        acc << escape_quotes(object.s); // change to std::quote() in c++14?
+        acc << escape_quotes(object.str()); // change to std::quote() in c++14?
         acc << '"';
         break;
     case TNUMBER:
-        if (!std::isfinite(object.d))
+        if (!std::isfinite(object.num()))
         {
             // slightly ugly :(
-            std::string nn = tostring(object.d);
+            std::string nn = tostring(object.num());
             if (nn == "1.#INF")
                 acc << 'I';
             else if (nn == "-1.#INF")
@@ -398,19 +437,19 @@ size_t LuaVal::dump_object(LuaVal const & object, unsigned int nmemo, MEMO & mem
                 acc << 'Q';
         }
         else
-            acc << object.d;
+            acc << object.num();
         break;
     case TTABLE:
         return dump_type_table(object, nmemo, memo, acc);
         break;
     default:
-        throw smallfolk_exception("dump_object invalid or unhandled tag %i", object.tag);
+        throw smallfolk_exception("dump_object invalid or unhandled tag %i", object.GetTypeTag());
         break;
     }
-    return std::move(nmemo);
+    return nmemo;
 }
 
-std::string LuaVal::escape_quotes(const std::string & before)
+std::string Serializer::escape_quotes(const std::string & before)
 {
     std::string after;
     after.reserve(before.length() + 4);
@@ -426,10 +465,10 @@ std::string LuaVal::escape_quotes(const std::string & before)
         }
     }
 
-    return std::move(after);
+    return after;
 }
 
-std::string LuaVal::unescape_quotes(const std::string & before)
+std::string Serializer::unescape_quotes(const std::string & before)
 {
     std::string after;
     after.reserve(before.length());
@@ -446,10 +485,10 @@ std::string LuaVal::unescape_quotes(const std::string & before)
         }
     }
 
-    return std::move(after);
+    return after;
 }
 
-bool LuaVal::nonzero_digit(char c)
+bool Serializer::nonzero_digit(char c)
 {
     switch (c)
     {
@@ -467,7 +506,7 @@ bool LuaVal::nonzero_digit(char c)
     return false;
 }
 
-bool LuaVal::is_digit(char c)
+bool Serializer::is_digit(char c)
 {
     switch (c)
     {
@@ -486,7 +525,7 @@ bool LuaVal::is_digit(char c)
     return false;
 }
 
-char LuaVal::strat(std::string const & string, std::string::size_type i)
+char Serializer::strat(std::string const & string, std::string::size_type i)
 {
     if (i != std::string::npos &&
         i < string.length())
@@ -494,7 +533,7 @@ char LuaVal::strat(std::string const & string, std::string::size_type i)
     return '\0'; // bad?
 }
 
-LuaVal LuaVal::expect_number(std::string const & string, size_t & start)
+LuaVal Serializer::expect_number(std::string const & string, size_t & start)
 {
     size_t i = start;
     char head = strat(string, i);
@@ -538,7 +577,7 @@ LuaVal LuaVal::expect_number(std::string const & string, size_t & start)
     return std::atof(string.substr(temp, i).c_str());
 }
 
-LuaVal LuaVal::expect_object(std::string const & string, size_t & i, TABLES & tables)
+LuaVal Serializer::expect_object(std::string const & string, size_t & i, Serializer::TABLES & tables)
 {
     static double _zero = 0.0;
 
@@ -550,7 +589,7 @@ LuaVal LuaVal::expect_object(std::string const & string, size_t & i, TABLES & ta
     case 'f':
         return false;
     case 'n':
-        return nil();
+        return LuaVal();
     case 'Q':
         return -(0 / _zero);
     case 'N':
@@ -596,7 +635,7 @@ LuaVal LuaVal::expect_object(std::string const & string, size_t & i, TABLES & ta
         if (strat(string, i) == '}')
         {
             ++i;
-            return std::move(nt);
+            return nt;
         }
         while (true)
         {
@@ -616,7 +655,7 @@ LuaVal LuaVal::expect_object(std::string const & string, size_t & i, TABLES & ta
             else if (head == '}')
             {
                 ++i;
-                return std::move(nt);
+                return nt;
             }
             else
             {
@@ -652,7 +691,7 @@ LuaVal LuaVal::expect_object(std::string const & string, size_t & i, TABLES & ta
         break;
     }
     }
-    return nil();
+    return LuaVal();
 }
 
 smallfolk_exception::smallfolk_exception(const char * format, ...) : std::logic_error("Smallfolk exception")

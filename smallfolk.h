@@ -2,19 +2,11 @@
 #define SMALLFOLK_H
 
 #include <string>
-#include <iostream>
-#include <iomanip>
-#include <sstream>
-#include <map>
 #include <vector>
 #include <unordered_map>
-#include <cmath>
-#include <memory>
-#include <cassert>
-#include <functional>
-#include <stdexcept>
-#include <stdarg.h>
-#include <stdio.h>
+#include <memory> // std::unique_ptr
+#include <stdexcept> // std::logic_error
+#include <cstddef> // size_t
 
 class smallfolk_exception : public std::logic_error
 {
@@ -41,34 +33,20 @@ class LuaVal
 public:
 
     // static nil value, same as LuaVal();
-    static LuaVal const & nil();
+    // You can use it as for example as default const reference
+    static LuaVal const nil;
 
     // returns the string representation of the value info similar to lua tostring
     std::string tostring() const;
 
+    // use as the hasher for containers, for example std::unordered_map<LuaVal, int, LuaVal::LuaValHasher>
     struct LuaValHasher
     {
-        size_t operator()(LuaVal const & v) const
-        {
-            switch (v.tag)
-            {
-            case TBOOL:
-                return std::hash<bool>()(v.b);
-            case TNIL:
-                return std::hash<int>()(0);
-            case TSTRING:
-                return std::hash<std::string>()(v.s);
-            case TNUMBER:
-                return std::hash<double>()(v.d);
-            case TTABLE:
-                return std::hash<TblPtr>()(v.tbl_ptr);
-            }
-            return std::hash<std::string>()(v.tostring());
-        }
+        size_t operator()(LuaVal const & v) const;
     };
 
-    typedef std::unordered_map< LuaVal, LuaVal, LuaValHasher> LuaTable;
-    typedef std::unique_ptr< LuaTable > TblPtr; // circular reference memleak if insert self to self
+    typedef std::unordered_map<LuaVal, LuaVal, LuaValHasher> LuaTable;
+    typedef std::unique_ptr<LuaTable> TblPtr; // circular reference memleak if insert self to self
 
     LuaVal(const LuaTypeTag tag);
     LuaVal();
@@ -86,42 +64,63 @@ public:
     LuaVal(LuaVal && val);
     LuaVal(std::initializer_list<LuaVal const> const & l);
 
-    bool isstring() const;
-    bool isnumber() const;
-    bool istable() const;
-    bool isbool() const;
-    bool isnil() const;
+    bool isstring() const { return tag == TSTRING; }
+    bool isnumber() const { return tag == TNUMBER; }
+    bool istable() const { return tag == TTABLE; }
+    bool isbool() const { return tag == TBOOL; }
+    bool isnil() const { return tag == TNIL; }
 
     // create a table (same as LuaVal(TTABLE);)
-    static LuaVal table(LuaTable arr = LuaTable());
+    static LuaVal table(LuaTable arr = LuaTable()) { return LuaVal(arr); }
 
+    // gettable, adds key-nil pair if not existing
+    // nil key throws error
+    LuaVal & operator[](LuaVal const & k);
     // gettable
-    LuaVal get(LuaVal const & k) const;
-
+    LuaVal const & get(LuaVal const & k) const;
+    // returns true if value was found with key
+    bool has(LuaVal const & k) const;
     // settable, return self
     LuaVal & set(LuaVal const & k, LuaVal const & v);
-
     // erase, return self
     LuaVal & rem(LuaVal const & k);
-
     // table array size, not actual element count
     unsigned int len() const;
-
     // table.insert, return self
-    LuaVal & insert(LuaVal const & v, LuaVal const & pos = nil());
-
+    LuaVal & insert(LuaVal const & v, LuaVal const & pos = nil);
     // table.remove, return self
-    LuaVal & remove(LuaVal const & pos = nil());
+    LuaVal & remove(LuaVal const & pos = nil);
 
     // get a number value
-    double num() const;
+    double num() const
+    {
+        if (!isnumber())
+            throw smallfolk_exception("using num on non number object");
+        return d;
+    }
     // get a boolean value
-    bool boolean() const;
+    bool boolean() const
+    {
+        if (!isbool())
+            throw smallfolk_exception("using boolean on non bool object");
+        return b;
+    }
     // get a string value
-    std::string const & str() const;
+    std::string const & str() const
+    {
+        if (!isstring())
+            throw smallfolk_exception("using str on non string object");
+        return s;
+    }
     // get a table value
-    LuaTable const & tbl() const;
-    LuaTypeTag GetTypeTag() const;
+    LuaTable const & tbl() const
+    {
+        if (!istable())
+            throw smallfolk_exception("using tbl on non table object");
+        return *tbl_ptr;
+    }
+
+    LuaTypeTag GetTypeTag() const { return tag; }
 
     // serializes the value into string
     // errmsg is optional value to output error message to on failure
@@ -133,58 +132,13 @@ public:
     // errmsg is optional value to output error message to on failure
     static LuaVal loads(std::string const & string, std::string* errmsg = nullptr);
 
-    bool operator==(LuaVal const& rhs) const
-    {
-        if (tag != rhs.tag)
-            return false;
-        switch (tag)
-        {
-        case TBOOL:
-            return b == rhs.b;
-        case TNIL:
-            return true;
-        case TSTRING:
-            return s == rhs.s;
-        case TNUMBER:
-            return d == rhs.d;
-        case TTABLE:
-            return tbl_ptr == rhs.tbl_ptr;
-        }
-        throw smallfolk_exception("operator== invalid or unhandled tag %i", tag);
-    }
-
-    bool operator!=(LuaVal const& rhs) const
-    {
-        return !(*this == rhs);
-    }
+    bool operator==(LuaVal const& rhs) const;
+    bool operator!=(LuaVal const& rhs) const { return !(*this == rhs); }
 
     // You can use !val to check for nil or false
-    explicit operator bool()
-    {
-        return !isnil() && (!isbool() || boolean());
-    }
+    operator bool() const;
 
-    LuaVal& operator=(LuaVal const& val)
-    {
-        tag = val.tag;
-        if (istable())
-        {
-            tbl_ptr.reset(new LuaTable(*val.tbl_ptr));
-        }
-        else
-            tbl_ptr = nullptr;
-        s = val.s;
-        d = val.d;
-        b = val.b;
-
-        if (istable())
-        {
-            if (!tbl_ptr)
-                throw smallfolk_exception("creating table LuaVal with nullptr table");
-        }
-        return *this;
-    }
-
+    LuaVal& operator=(LuaVal const& val);
     LuaVal& operator=(LuaVal && val)
     {
         tag = std::move(val.tag);
@@ -192,19 +146,10 @@ public:
         s = std::move(val.s);
         d = std::move(val.d);
         b = std::move(val.b);
-
-        if (istable())
-        {
-            if (!tbl_ptr)
-                throw smallfolk_exception("creating table LuaVal with nullptr table");
-        }
         return *this;
     }
 
 private:
-    typedef std::vector<LuaVal> TABLES;
-    typedef std::unordered_map<LuaVal, unsigned int, LuaValHasher> MEMO;
-    typedef std::stringstream ACC;
 
     LuaTypeTag tag;
     TblPtr tbl_ptr;
@@ -212,20 +157,6 @@ private:
     // int64_t i; // lua 5.3 support?
     double d;
     bool b;
-
-    // sprintf is ~50% faster than other solutions
-    static std::string tostring(const double d);
-    static std::string tostring(TblPtr const & ptr);
-
-    static size_t dump_type_table(LuaVal const & object, unsigned int nmemo, MEMO& memo, ACC& acc);
-    static size_t dump_object(LuaVal const & object, unsigned int nmemo, MEMO& memo, ACC& acc);
-    static std::string escape_quotes(const std::string &before);
-    static std::string unescape_quotes(const std::string &before);
-    static bool nonzero_digit(char c);
-    static bool is_digit(char c);
-    static char strat(std::string const & string, std::string::size_type i);
-    static LuaVal expect_number(std::string const & string, size_t& start);
-    static LuaVal expect_object(std::string const & string, size_t& i, TABLES& tables);
 };
 
 #endif
