@@ -1,4 +1,6 @@
 #include "smallfolk.h"
+#include <iostream> // std::cout
+#include <cassert> // assert
 
 int main()
 {
