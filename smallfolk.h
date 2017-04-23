@@ -7,6 +7,7 @@
 #include <memory> // std::unique_ptr
 #include <stdexcept> // std::logic_error
 #include <cstddef> // size_t
+#inlcude <utility> // std::move
 
 class smallfolk_exception : public std::logic_error
 {
