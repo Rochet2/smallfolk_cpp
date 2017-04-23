@@ -78,62 +78,6 @@ size_t LuaVal::LuaValHasher::operator()(LuaVal const & v) const
     return std::hash<std::string>()(v.tostring());
 }
 
-LuaVal::LuaVal(const LuaTypeTag tag) : tag(tag), tbl_ptr(tag == TTABLE ? new LuaTable() : nullptr), d(0), b(false)
-{
-}
-
-LuaVal::LuaVal() : tag(TNIL), tbl_ptr(nullptr), d(0), b(false)
-{
-}
-
-LuaVal::LuaVal(const long d) : tag(TNUMBER), tbl_ptr(nullptr), d(d), b(false)
-{
-}
-
-LuaVal::LuaVal(const unsigned long d) : tag(TNUMBER), tbl_ptr(nullptr), d(d), b(false)
-{
-}
-
-LuaVal::LuaVal(const int d) : tag(TNUMBER), tbl_ptr(nullptr), d(d), b(false)
-{
-}
-
-LuaVal::LuaVal(const unsigned int d) : tag(TNUMBER), tbl_ptr(nullptr), d(d), b(false)
-{
-}
-
-LuaVal::LuaVal(const float d) : tag(TNUMBER), tbl_ptr(nullptr), d(d), b(false)
-{
-}
-
-LuaVal::LuaVal(const double d) : tag(TNUMBER), tbl_ptr(nullptr), d(d), b(false)
-{
-}
-
-LuaVal::LuaVal(const std::string & s) : tag(TSTRING), tbl_ptr(nullptr), s(s), d(0), b(false)
-{
-}
-
-LuaVal::LuaVal(const char * s) : tag(TSTRING), tbl_ptr(nullptr), s(s), d(0), b(false)
-{
-}
-
-LuaVal::LuaVal(const bool b) : tag(TBOOL), tbl_ptr(nullptr), d(0), b(b)
-{
-}
-
-LuaVal::LuaVal(LuaTable const & luatable) : tag(TTABLE), tbl_ptr(new LuaTable(luatable)), d(0), b(false)
-{
-}
-
-LuaVal::LuaVal(LuaVal const & val) : tag(val.tag), tbl_ptr(val.tag == TTABLE ? val.tbl_ptr ? new LuaTable(*val.tbl_ptr) : new LuaTable() : nullptr), s(val.s), d(val.d), b(val.b)
-{
-}
-
-LuaVal::LuaVal(LuaVal && val) : tag(std::move(val.tag)), tbl_ptr(std::move(val.tbl_ptr)), s(std::move(val.s)), d(std::move(val.d)), b(std::move(val.b))
-{
-}
-
 LuaVal::LuaVal(std::initializer_list<LuaVal const> const & l) : tag(TTABLE), tbl_ptr(new LuaTable()), d(0), b(false)
 {
     LuaTable & tbl = *tbl_ptr;

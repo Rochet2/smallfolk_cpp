@@ -49,21 +49,22 @@ public:
     typedef std::unordered_map<LuaVal, LuaVal, LuaValHasher> LuaTable;
     typedef std::unique_ptr<LuaTable> TblPtr; // circular reference memleak if insert self to self
 
-    LuaVal(const LuaTypeTag tag);
-    LuaVal();
-    LuaVal(const long d);
-    LuaVal(const unsigned long d);
-    LuaVal(const int d);
-    LuaVal(const unsigned int d);
-    LuaVal(const float d);
-    LuaVal(const double d);
-    LuaVal(const std::string& s);
-    LuaVal(const char* s);
-    LuaVal(const bool b);
-    LuaVal(LuaTable const & luatable);
-    LuaVal(LuaVal const & val);
-    LuaVal(LuaVal && val);
+    LuaVal(const LuaTypeTag tag) : tag(tag), tbl_ptr(tag == TTABLE ? new LuaTable() : nullptr), d(0), b(false) {}
+    LuaVal() : tag(TNIL), tbl_ptr(nullptr), d(0), b(false) {}
+    LuaVal(const long d) : tag(TNUMBER), tbl_ptr(nullptr), d(d), b(false) {}
+    LuaVal(const unsigned long d) : tag(TNUMBER), tbl_ptr(nullptr), d(d), b(false) {}
+    LuaVal(const int d) : tag(TNUMBER), tbl_ptr(nullptr), d(d), b(false) {}
+    LuaVal(const unsigned int d) : tag(TNUMBER), tbl_ptr(nullptr), d(d), b(false) {}
+    LuaVal(const float d) : tag(TNUMBER), tbl_ptr(nullptr), d(d), b(false) {}
+    LuaVal(const double d) : tag(TNUMBER), tbl_ptr(nullptr), d(d), b(false) {}
+    LuaVal(const std::string & s) : tag(TSTRING), tbl_ptr(nullptr), s(s), d(0), b(false) {}
+    LuaVal(const char * s) : tag(TSTRING), tbl_ptr(nullptr), s(s), d(0), b(false) {}
+    LuaVal(const bool b) : tag(TBOOL), tbl_ptr(nullptr), d(0), b(b) {}
+    LuaVal(LuaTable const & luatable) : tag(TTABLE), tbl_ptr(new LuaTable(luatable)), d(0), b(false) {}
+    LuaVal(LuaVal const & val) : tag(val.tag), tbl_ptr(val.tag == TTABLE ? val.tbl_ptr ? new LuaTable(*val.tbl_ptr) : new LuaTable() : nullptr), s(val.s), d(val.d), b(val.b) {}
+    LuaVal(LuaVal && val) noexcept : tag(std::move(val.tag)), tbl_ptr(std::move(val.tbl_ptr)), s(std::move(val.s)), d(std::move(val.d)), b(std::move(val.b)) {}
     LuaVal(std::initializer_list<LuaVal const> const & l);
+    ~LuaVal() = default;
 
     bool isstring() const { return tag == TSTRING; }
     bool isnumber() const { return tag == TNUMBER; }
