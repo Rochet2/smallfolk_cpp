@@ -164,7 +164,7 @@ LuaVal const & LuaVal::get(LuaVal const & k) const
     if (k.isnil())
         throw smallfolk_exception("using get with nil key");
     LuaTable & tbl = (*tbl_ptr);
-    auto & it = tbl.find(k);
+    auto it = tbl.find(k);
     if (it != tbl.end())
         return it->second;
     return nil;
@@ -177,7 +177,7 @@ bool LuaVal::has(LuaVal const & k) const
     if (k.isnil())
         throw smallfolk_exception("using has with nil key");
     LuaTable & tbl = (*tbl_ptr);
-    auto & it = tbl.find(k);
+    auto it = tbl.find(k);
     return it != tbl.end();
 }
 
@@ -214,7 +214,7 @@ unsigned int LuaVal::len() const
     unsigned int i = 0;
     while (++i)
     {
-        auto & it = tbl.find(i);
+        auto it = tbl.find(i);
         if (it == tbl.end() || it->second.isnil())
             break;
     }
