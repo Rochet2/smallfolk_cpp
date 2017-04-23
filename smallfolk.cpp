@@ -22,7 +22,7 @@ namespace Serializer
     inline std::string tostring(LuaVal::TblPtr const & ptr)
     {
         char arr[128];
-        sprintf(arr, "table: %p", ptr.get());
+        sprintf(arr, "table: %p", static_cast<void*>(ptr.get()));
         return arr;
     }
 
