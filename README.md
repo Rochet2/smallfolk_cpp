@@ -76,7 +76,7 @@ To put this into any kind of perspective, here is the print of the serialized da
 
 ## Table cycles
 
-**Note: This feature was disabled cause of difficult implementing in C++ and possibly unwanted infinite cycles. All table assigning create copies now in the C++ code and no @ notation is recognised for serializing or deserializing. Any such references are set to nil when deserializing. Any @ references are otherwise deep copies in the C++ code **
+__Note: This feature was disabled cause of difficult implementing in C++ and possibly unwanted infinite cycles. All table assigning create copies now in the C++ code and no @ notation is recognised for serializing or deserializing. Any such references are set to nil when deserializing. Any @ references are otherwise deep copies in the C++ code__
 
 From original smallfolk
 > Sometimes you have strange, non-euclidean geometries in your table
