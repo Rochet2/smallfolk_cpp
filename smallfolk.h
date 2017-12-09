@@ -51,11 +51,8 @@ public:
 
     LuaVal(const LuaTypeTag tag) : tag(tag), tbl_ptr(tag == TTABLE ? new LuaTable() : nullptr), d(0), b(false) {}
     LuaVal() : tag(TNIL), tbl_ptr(nullptr), d(0), b(false) {}
-    LuaVal(const long d) : tag(TNUMBER), tbl_ptr(nullptr), d(d), b(false) {}
-    LuaVal(const unsigned long d) : tag(TNUMBER), tbl_ptr(nullptr), d(d), b(false) {}
     LuaVal(const int d) : tag(TNUMBER), tbl_ptr(nullptr), d(d), b(false) {}
     LuaVal(const unsigned int d) : tag(TNUMBER), tbl_ptr(nullptr), d(d), b(false) {}
-    LuaVal(const float d) : tag(TNUMBER), tbl_ptr(nullptr), d(d), b(false) {}
     LuaVal(const double d) : tag(TNUMBER), tbl_ptr(nullptr), d(d), b(false) {}
     LuaVal(const std::string & s) : tag(TSTRING), tbl_ptr(nullptr), s(s), d(0), b(false) {}
     LuaVal(const char * s) : tag(TSTRING), tbl_ptr(nullptr), s(s), d(0), b(false) {}
@@ -64,6 +61,28 @@ public:
     LuaVal(LuaVal const & val) : tag(val.tag), tbl_ptr(val.tag == TTABLE ? val.tbl_ptr ? new LuaTable(*val.tbl_ptr) : new LuaTable() : nullptr), s(val.s), d(val.d), b(val.b) {}
     LuaVal(LuaVal && val) noexcept : tag(std::move(val.tag)), tbl_ptr(std::move(val.tbl_ptr)), s(std::move(val.s)), d(std::move(val.d)), b(std::move(val.b)) {}
     LuaVal(std::initializer_list<LuaVal const> const & l);
+    static LuaVal table() { return LuaVal(TTABLE); }
+    static LuaVal mrg(LuaVal const & l, LuaVal const & r)
+    {
+        LuaVal t = l;
+        for (auto const & v : r.tbl())
+            t[v.first] = v.second;
+        return t;
+    }
+    static LuaVal mrg(LuaVal&& l, LuaVal&& r) { return mrg(l, std::move(r)); }
+    static LuaVal mrg(LuaVal&& l, LuaVal const & r)
+    {
+        for (auto const & v : r.tbl())
+            l[v.first] = v.second;
+        return std::move(l);
+    }
+    static LuaVal mrg(LuaVal const & l, LuaVal&& r)
+    {
+        for (auto const & v : l.tbl())
+            r.setignore(v.first, v.second);
+        return std::move(r);
+    }
+
     ~LuaVal() = default;
 
     bool isstring() const { return tag == TSTRING; }
@@ -71,9 +90,6 @@ public:
     bool istable() const { return tag == TTABLE; }
     bool isbool() const { return tag == TBOOL; }
     bool isnil() const { return tag == TNIL; }
-
-    // create a table (same as LuaVal(TTABLE);)
-    static LuaVal table(LuaTable arr = LuaTable()) { return LuaVal(arr); }
 
     // gettable, adds key-nil pair if not existing
     // nil key throws error
@@ -84,6 +100,8 @@ public:
     bool has(LuaVal const & k) const;
     // settable, return self
     LuaVal & set(LuaVal const & k, LuaVal const & v);
+    // settable ignore if exists, return self
+    LuaVal & setignore(LuaVal const & k, LuaVal const & v);
     // erase, return self
     LuaVal & rem(LuaVal const & k);
     // table array size, not actual element count
@@ -122,7 +140,12 @@ public:
         return *tbl_ptr;
     }
 
-    LuaTypeTag GetTypeTag() const { return tag; }
+    // Returns a typetag, the internal identifier for each type
+    LuaTypeTag typetag() const { return tag; }
+    // Returns the LuaVal's type as a string
+    std::string type() const { return type(typetag()); }
+    // Returns the type tag's type as a string
+    static std::string type(LuaTypeTag tag);
 
     // serializes the value into string
     // errmsg is optional value to output error message to on failure
@@ -138,7 +161,7 @@ public:
     bool operator!=(LuaVal const& rhs) const { return !(*this == rhs); }
 
     // You can use !val to check for nil or false
-    operator bool() const;
+    explicit operator bool() const;
 
     LuaVal& operator=(LuaVal const& val);
     LuaVal& operator=(LuaVal && val)

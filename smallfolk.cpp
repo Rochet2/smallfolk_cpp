@@ -26,10 +26,10 @@ namespace Serializer
         return arr;
     }
 
-    size_t dump_type_table(LuaVal const & object, unsigned int nmemo, MEMO& memo, ACC& acc);
-    size_t dump_object(LuaVal const & object, unsigned int nmemo, MEMO& memo, ACC& acc);
-    std::string escape_quotes(const std::string &before);
-    std::string unescape_quotes(const std::string &before);
+    unsigned int dump_type_table(LuaVal const & object, unsigned int nmemo, MEMO& memo, ACC& acc);
+    unsigned int dump_object(LuaVal const & object, unsigned int nmemo, MEMO& memo, ACC& acc);
+    std::string escape_quotes(const std::string &before, char quote);
+    std::string unescape_quotes(const std::string &before, char quote);
     bool nonzero_digit(char c);
     bool is_digit(char c);
     char strat(std::string const & string, std::string::size_type i);
@@ -81,7 +81,7 @@ size_t LuaVal::LuaValHasher::operator()(LuaVal const & v) const
 LuaVal::LuaVal(std::initializer_list<LuaVal const> const & l) : tag(TTABLE), tbl_ptr(new LuaTable()), d(0), b(false)
 {
     LuaTable & tbl = *tbl_ptr;
-    size_t i = 0;
+    unsigned int i = 0;
     for (auto&& v : l)
     {
         if (v.isnil())
@@ -136,6 +136,19 @@ LuaVal & LuaVal::set(LuaVal const & k, LuaVal const & v)
         tbl.erase(k);
     else
         tbl[k] = v; // normally set pair
+    return *this;
+}
+
+LuaVal & LuaVal::setignore(LuaVal const & k, LuaVal const & v)
+{
+    if (!istable())
+        throw smallfolk_exception("using setignore on non table object");
+    if (k.isnil())
+        throw smallfolk_exception("using setignore with nil key");
+    if (v.isnil())
+        return *this;
+    LuaTable & tbl = (*tbl_ptr);
+    tbl.emplace(k, v);
     return *this;
 }
 
@@ -218,6 +231,24 @@ LuaVal & LuaVal::remove(LuaVal const & pos)
     return *this;
 }
 
+std::string LuaVal::type(LuaTypeTag tag)
+{
+    switch (tag)
+    {
+        case TBOOL:
+            return "boolean";
+        case TNIL:
+            return "nil";
+        case TSTRING:
+            return "string";
+        case TNUMBER:
+            return "number";
+        case TTABLE:
+            return "table";
+    }
+    throw smallfolk_exception("tostring invalid or unhandled tag %i", tag);
+}
+
 std::string LuaVal::dumps(std::string * errmsg) const
 {
     try
@@ -291,7 +322,7 @@ LuaVal& LuaVal::operator=(LuaVal const& val)
     return *this;
 }
 
-size_t Serializer::dump_type_table(LuaVal const & object, unsigned int nmemo, MEMO & memo, ACC & acc)
+unsigned int Serializer::dump_type_table(LuaVal const & object, unsigned int nmemo, MEMO & memo, ACC & acc)
 {
     if (!object.istable())
         throw smallfolk_exception("using dump_type_table on non table object");
@@ -349,9 +380,9 @@ size_t Serializer::dump_type_table(LuaVal const & object, unsigned int nmemo, ME
     return nmemo;
 }
 
-size_t Serializer::dump_object(LuaVal const & object, unsigned int nmemo, MEMO & memo, ACC & acc)
+unsigned int Serializer::dump_object(LuaVal const & object, unsigned int nmemo, MEMO & memo, ACC & acc)
 {
-    switch (object.GetTypeTag())
+    switch (object.typetag())
     {
     case TBOOL:
         acc << (object.boolean() ? 't' : 'f');
@@ -361,7 +392,7 @@ size_t Serializer::dump_object(LuaVal const & object, unsigned int nmemo, MEMO &
         break;
     case TSTRING:
         acc << '"';
-        acc << escape_quotes(object.str()); // change to std::quote() in c++14?
+        acc << escape_quotes(object.str(), '"'); // change to std::quote() in c++14?
         acc << '"';
         break;
     case TNUMBER:
@@ -369,16 +400,16 @@ size_t Serializer::dump_object(LuaVal const & object, unsigned int nmemo, MEMO &
         {
             // slightly ugly :(
             std::string nn = tostring(object.num());
-            if (nn == "1.#INF")
+            if (nn == "inf")
                 acc << 'I';
-            else if (nn == "-1.#INF")
+            else if (nn == "-inf")
                 acc << 'i';
-            else if (nn == "1.#IND")
-                acc << 'i';
-            else if (nn == "-1.#IND")
+            else if (nn == "-nan(ind)")
                 acc << 'N';
-            else
+            else if (nn == "nan")
                 acc << 'Q';
+            else
+                acc << 'I';
         }
         else
             acc << object.num();
@@ -387,46 +418,42 @@ size_t Serializer::dump_object(LuaVal const & object, unsigned int nmemo, MEMO &
         return dump_type_table(object, nmemo, memo, acc);
         break;
     default:
-        throw smallfolk_exception("dump_object invalid or unhandled tag %i", object.GetTypeTag());
+        throw smallfolk_exception("dump_object invalid or unhandled tag %i", object.typetag());
         break;
     }
     return nmemo;
 }
 
-std::string Serializer::escape_quotes(const std::string & before)
+std::string Serializer::escape_quotes(const std::string & before, char quote)
 {
     std::string after;
     after.reserve(before.length() + 4);
 
     for (std::string::size_type i = 0; i < before.length(); ++i)
     {
-        switch (before[i])
-        {
-        case '"':
-            after += '"'; // no break
-        default:
+        if (before[i] == quote)
+            after += quote; // no break
+        else
             after += before[i];
-        }
     }
 
     return after;
 }
 
-std::string Serializer::unescape_quotes(const std::string & before)
+std::string Serializer::unescape_quotes(const std::string & before, char quote)
 {
     std::string after;
     after.reserve(before.length());
 
     for (std::string::size_type i = 0; i < before.length(); ++i)
     {
-        switch (before[i])
+        if (before[i] == quote)
         {
-        case '"':
-            if (i + 1 < before.length() && before[i + 1] == '"')
+            if (i + 1 < before.length() && before[i + 1] == quote)
                 ++i;
-        default:
-            after += before[i];
         }
+        else
+            after += before[i];
     }
 
     return after;
@@ -528,6 +555,10 @@ LuaVal Serializer::expect_object(std::string const & string, size_t & i, Seriali
     char cc = strat(string, i++);
     switch (cc)
     {
+    case ' ':
+    case '\t':
+        // skip whitespace
+        return expect_object(string, i, tables);
     case 't':
         return true;
     case 'f':
@@ -542,21 +573,22 @@ LuaVal Serializer::expect_object(std::string const & string, size_t & i, Seriali
         return (1 / _zero);
     case 'i':
         return -(1 / _zero);
+    case '\'':
     case '"':
     {
         size_t nexti = i - 1;
         do
         {
-            nexti = string.find('"', nexti + 1);
+            nexti = string.find(cc, nexti + 1);
             if (nexti == std::string::npos)
             {
                 throw smallfolk_exception("expect_object at %u was %c eof before string ends", i, cc);
             }
             ++nexti;
-        } while (strat(string, nexti) == '"');
+        } while (strat(string, nexti) == cc);
         size_t temp = i;
         i = nexti;
-        return unescape_quotes(string.substr(temp, nexti - temp - 1));
+        return unescape_quotes(string.substr(temp, nexti - temp - 1), cc);
     }
     case '0':
     case '1':
@@ -584,7 +616,10 @@ LuaVal Serializer::expect_object(std::string const & string, size_t & i, Seriali
         while (true)
         {
             LuaVal k = expect_object(string, i, tables);
-            if (strat(string, i) == ':')
+            char at = strat(string, i);
+            while (at == ' ')
+                at = strat(string, ++i);
+            if (at == ':')
             {
                 nt.set(k, expect_object(string, ++i, tables));
             }
@@ -594,6 +629,8 @@ LuaVal Serializer::expect_object(std::string const & string, size_t & i, Seriali
                 ++j;
             }
             char head = strat(string, i);
+            while (head == ' ')
+                head = strat(string, ++i);
             if (head == ',')
                 ++i;
             else if (head == '}')

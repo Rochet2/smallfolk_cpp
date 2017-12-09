@@ -6,12 +6,20 @@ int main()
 {
     {
         std::cout << "Test values" << std::endl;
+        LuaVal asd = { "number", "string", "table", LuaVal::mrg({"number", "string"}, LuaVal::LuaTable({{"ke", "test"},{"ke2", "test"}})) };
+        std::cout << asd.dumps() << std::endl;
+        std::string err;
+        LuaVal v = LuaVal::loads(" { 1 , 2 , { 3 , 4, ' k e ' : ' t e s t ' } } ", &err);
+        std::cout << v.dumps(&err) << std::endl;
+        std::cout << err << std::endl;
 
         std::cout << "Testing different double corner values" << std::endl;
         double _zero = 0.0;
         LuaVal tn = { -(0 / _zero), (0 / _zero), (1 / _zero), -(1 / _zero) };
         std::cout << tn.dumps() << std::endl;
         std::cout << -(0 / _zero) << " " << (0 / _zero) << " " << (1 / _zero) << " " << -(1 / _zero) << std::endl;
+        std::cout << tn.get(1).tostring() << " " << tn.get(2).tostring() << " " << tn.get(3).tostring() << " " << tn.get(4).tostring() << std::endl;
+        tn = LuaVal::loads(tn.dumps());
         std::cout << tn.get(1).tostring() << " " << tn.get(2).tostring() << " " << tn.get(3).tostring() << " " << tn.get(4).tostring() << std::endl;
         std::cout << std::endl;
 
@@ -197,6 +205,40 @@ int main()
         table.remove();
         std::cout << table.len() << std::endl;
         std::cout << std::endl;
+    }
+
+    {
+        LuaVal val = 5;
+        LuaVal val2;
+        if (val)
+            std::cout << "bool() works" << std::endl;
+        if (!val2)
+            std::cout << "bool() works" << std::endl;
+        if (val == 5)
+            std::cout << "== works" << std::endl;
+        if (val != 6)
+            std::cout << "!= works" << std::endl;
+    }
+
+    {
+        LuaVal val(TTABLE);
+        val[123] = 5;
+        val["test"] = 5;
+        val[1.5] = 5;
+    }
+
+    {
+        LuaVal val1 = { 1,2, LuaVal::mrg({ 3,4 }, LuaVal::LuaTable({ { "ke","test" } })) };
+        LuaVal val2 = LuaVal::loads("{1,2,{3,4,'ke':'test'}}");
+        std::cout << val1.dumps() << std::endl;
+        std::cout << val2.dumps() << std::endl;
+    }
+
+    {
+        LuaVal t1 = { 1, 2, { 1,2,3 } };
+        LuaVal t2 = LuaVal::LuaTable{ { "key", "value" }, { 2, "value2" } };
+        std::cout << t1.dumps() << std::endl;
+        std::cout << t2.dumps() << std::endl;
     }
     return 0;
 }

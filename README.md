@@ -140,7 +140,7 @@ This function does not throw.
 
 ### LuaVal constructors
 Constructors allow implicitly constructing values.
-Constructors do not throw.
+Constructors do not throw. Watch out for quirks with initializer list constructor: http://stackoverflow.com/questions/26947704/implicit-conversion-failure-from-initializer-list
 ```C++
 LuaVal implicit_test = -123;
 LuaVal copy_test(implicit_test);
@@ -152,9 +152,19 @@ LuaVal d(123.456);
 LuaVal f(123.456f);
 LuaVal i(-678);
 LuaVal u(0xFFFFFFF);
-LuaVal t(TTABLE); // create a value through typetag creates empty or zero initialized value
-LuaVal t2 = LuaVal::table();
-LuaVal t3 = { 1, 2, 3 }; // initializer list is supported for making tables
+LuaVal t1(TTABLE); // create a value through typetag creates empty or zero initialized value
+LuaVal t2 = LuaVal::table(); // another way to create tables
+LuaVal t3 = { 1, 2, { 1,2,3 } }; // initializer list is supported for making sequences (tables)
+LuaVal t4 = LuaVal::LuaTable{ { "key", "value" }, { 2, "value2" } }; // Table can be created with map table initializer list constructor also
+
+// watch out - depending on C++ version serializes to {2:{},3:{3},4:4}
+LuaVal quirks = { {}, {{}}, { 3 }, { LuaVal(4) } };
+```
+
+Creating sequences is easy, but creating complex tables that contain different types of values can be difficult or take a lot of space in code. To avoid quirks and for conveience you can deserialize strings to create values in a compact way. Here two equivalent values are created with normal style and deserialization:
+```c++
+LuaVal val1 = { 1,2, LuaVal::mrg({3,4.5}, LuaVal::LuaTable({{"ke","test"}})) };
+LuaVal val2 = LuaVal::loads("{1,2,{3,4.5,'ke':'test'}}");
 ```
 
 ### static nil
@@ -168,7 +178,7 @@ May throw if LuaVal is not valid for some reason (which should not be possible).
 
 ### typetag
 There are definitions for typetags used to identify each value type. These can be used in the constructor of a LuaValue as well.
-For example a table can be created with `LuaValue table(TTABLE)`. You can get the typetag of an object with the member function `LuaTypeTag LuaVal::GetTypeTag()`.
+For example a table can be created with `LuaValue table(TTABLE)`. You can get the typetag of an object with the member function `LuaTypeTag LuaVal::typetag()`.
 GetTypeTag does not throw.
 ```C++
 enum LuaTypeTag
@@ -183,7 +193,9 @@ enum LuaTypeTag
 
 ### tostring
 The member function `std::string LuaVal::tostring()` returns a string representation of the object. This is similar to tostring in lua.
-May throw if LuaVal is not valid for some reason (which should not be possible).
+You can get a string representation of the typetag of a value with `value.type()`.
+You can get a string representation of a typetag with `LuaVal::type(tag)`.
+All of these may throw if LuaVal or tag is not valid for some reason (which should not be possible).
 
 ### operators
 The LuaVal class offers a few operators.  
@@ -214,12 +226,12 @@ luaval.tbl()
 
 ### table access
 There are several methods for accessing and editing a table.
-*Note* Inserted values will be deep copies.
+**Note Inserted values will be deep copies in all cases.**
 
 The way of accessing and inserting map elements are the get and set member functions `luaval.get(key)`, `luaval.set(key, value)`.
 The function `set` returns the accessed table itself, so you can chain it to set multiple values.
 When a value is attempted to be set as nil, it will be erased from the table instead.
-These functions do not throw unless you use them on non table objects or with nil keys.
+These functions do not throw unless you use them on non table objects or with nil keys. `luaval.setignore(key, value)` works like `luaval.set(key, value)`, except it will not do anything if a value already exists in the table for that key.
 
 The get method above will provide only const reference access to the table elements. For non const access to elements you must use the `[]` operator like so `luaval[key]`. If the accessed key does not exist in the accessed table then a nil value is created to the table for that key. This means that accessing nonexisting elements will create clutter to the table. Setting a value to nil will not erase it from the table.
 This operator does not throw unless you use it on non table objects or with nil keys.
@@ -249,3 +261,6 @@ The len function returns the number of consecutive integer key elements in the t
 Insert and remove shift the values on the right side of the given position and insert or remove a value to or at the given position. If position is omitted, the value is inserted to the end of the list or the last element is removed.
 Insert and remove both return the accessed table.
 Each function throws if used on a non table object or pos is not valid.
+
+### table merging
+You can merge two tables with `LuaVal::mrg(tbl1, tbl2)`. This will make a new table that contains values from both tables. If they have same keys then tbl2 will overwrite tbl1 value in the new table.
