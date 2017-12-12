@@ -272,7 +272,7 @@ namespace std {
     public:
         size_t operator()(LuaVal const & v) const
         {
-            return LuaVal::LuaValHasher h()(v);
+            return LuaVal::LuaValHasher()(v);
         };
     };
 }
