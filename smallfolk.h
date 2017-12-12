@@ -268,7 +268,7 @@ private:
 
 namespace std {
     template <>
-    class hash<LuaVal> {
+    struct hash<LuaVal> {
     public:
         size_t operator()(LuaVal const & v) const
         {
