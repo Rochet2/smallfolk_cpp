@@ -15,6 +15,8 @@
 #include <cstddef> // size_t
 #include <utility> // std::move
 
+class LuaVal;
+
 class smallfolk_exception : public std::logic_error
 {
 public:
@@ -34,6 +36,14 @@ enum LuaTypeTag
     TTABLE,
     TBOOL,
 };
+
+namespace std {
+    template <>
+    class hash<LuaVal> {
+    public:
+        size_t operator()(LuaVal const & v) const;
+    };
+}
 
 class LuaVal
 {
