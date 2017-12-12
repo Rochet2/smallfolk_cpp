@@ -13,26 +13,6 @@ Due to implementation difficulties and security some features of gvx/Smallfolk a
 
 You use, distribute and extend Smallfolk_cpp under the terms of the MIT license.
 
-- [smallfolk_cpp](#smallfolk_cpp)
-	- [Usage](#usage)
-	- [Fast](#fast)
-	- [Table cycles](#table-cycles)
-	- [Security](#security)
-	- [Tested](#tested)
-	- [Reference](#reference)
-		- [try-catch](#try-catch)
-		- [serializing](#serializing)
-		- [deserializing](#deserializing)
-		- [LuaVal constructors](#luaval-constructors)
-		- [static nil](#static-nil)
-		- [hash](#hash)
-		- [typetag](#typetag)
-		- [tostring](#tostring)
-		- [operators](#operators)
-		- [isvalue](#isvalue)
-		- [LuaVal values](#luaval-values)
-		- [table access](#table-access)
-
 ## Usage
 
 ```C++
@@ -56,9 +36,9 @@ LuaVal deserialized = LuaVal::loads(serialized);
 
 // print the values from deserialized result table
 // Example output: Hello world -234.5
-std::cout << deserialized.get(1).str() << " ";
-std::cout << deserialized.get("test").str() << " ";
-std::cout << deserialized.get(67.5).num() << std::endl;
+std::cout << deserialized[1].str() << " ";
+std::cout << deserialized["test"].str() << " ";
+std::cout << deserialized[67.5].num() << std::endl;
 ```
 
 ## Fast
@@ -123,7 +103,7 @@ One method for try catching errors you can use is this:
 try {
   // smallfolk_cpp code
 }
-catch (std::exception& e) {
+catch (smallfolk_exception& e) {
     std::cout << e.what() << std::endl;
 }
 ```
@@ -137,6 +117,9 @@ This function does not throw.
 ### deserializing
 Deserializing happens by calling the function `static LuaVal LuaVal::loads(std::string const & string, std::string* errmsg = nullptr)`. When an error occurs with the deserialization a LuaVal representing a nil is returned and if errmsg points to a string then it is filled with the error message.
 This function does not throw.
+
+### LuaVal
+LuaVal is a type used to represent lua values in C++. LuaVal has a range of functions to access the underlying values and to construct LuaVal from different values. LuaVal is the input for serialization and output of deserialization.
 
 ### LuaVal constructors
 Constructors allow implicitly constructing values.
@@ -159,6 +142,12 @@ LuaVal t4 = LuaVal::LuaTable{ { "key", "value" }, { 2, "value2" } }; // Table ca
 
 // watch out - depending on C++ version serializes to {2:{},3:{3},4:4}
 LuaVal quirks = { {}, {{}}, { 3 }, { LuaVal(4) } };
+
+// You can mix and match a lot of different types and containers for creating tables.
+// For example vectors, lists, maps, arrays are supported for creating LuaVal.
+std::vector<std::list<std::string>> vec = {{"a", "b"},{"a", "b"}};
+LuaVal t5 = {1,2, "test", vec};
+// Resulting table: {1,2,"test",{{"a","b"},{"a","b"}}}
 ```
 
 Creating sequences is easy, but creating complex tables that contain different types of values can be difficult or take a lot of space in code. To avoid quirks and for conveience you can deserialize strings to create values in a compact way. Here two equivalent values are created with normal style and deserialization:

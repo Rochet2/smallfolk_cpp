@@ -1,6 +1,7 @@
 #include "smallfolk.h"
 #include <iostream> // std::cout
 #include <cassert> // assert
+#include <map>
 
 int main()
 {
@@ -74,9 +75,9 @@ int main()
             LuaVal h(-7);
             std::string str = h.str(); // error, h is not a string
         }
-        catch (std::exception const & e)
+        catch (smallfolk_exception const & e)
         {
-            // caught an exception, possibly smallfolk_cpp exception
+            // caught an exception
             errmsg = e.what();
         }
         // printing caught error if any
@@ -139,7 +140,7 @@ int main()
             tbl.set(1, tbl);
             std::cout << tbl.dumps() << std::endl;
         }
-        catch (std::exception const & e)
+        catch (smallfolk_exception const & e)
         {
             std::cout << e.what() << std::endl;
         }
@@ -240,5 +241,12 @@ int main()
         std::cout << t1.dumps() << std::endl;
         std::cout << t2.dumps() << std::endl;
     }
+
+    std::forward_list<std::deque<std::string>> vec = { { "a", "b" },{ "a", "b" } };
+    std::unordered_map<std::string, std::string> m;
+    std::array<std::string, 2> ar = {"d", "v"};
+    m["test"] = "asd";
+    LuaVal t441 = vec;
+    std::cout << t441.dumps() << std::endl;
     return 0;
 }

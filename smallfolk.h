@@ -3,7 +3,13 @@
 
 #include <string>
 #include <vector>
+#include <list>
+#include <deque>
+#include <set>
+#include <array>
+#include <forward_list>
 #include <unordered_map>
+#include <map>
 #include <memory> // std::unique_ptr
 #include <stdexcept> // std::logic_error
 #include <cstddef> // size_t
@@ -60,7 +66,70 @@ public:
     LuaVal(LuaTable const & luatable) : tag(TTABLE), tbl_ptr(new LuaTable(luatable)), d(0), b(false) {}
     LuaVal(LuaVal const & val) : tag(val.tag), tbl_ptr(val.tag == TTABLE ? val.tbl_ptr ? new LuaTable(*val.tbl_ptr) : new LuaTable() : nullptr), s(val.s), d(val.d), b(val.b) {}
     LuaVal(LuaVal && val) noexcept : tag(std::move(val.tag)), tbl_ptr(std::move(val.tbl_ptr)), s(std::move(val.s)), d(std::move(val.d)), b(std::move(val.b)) {}
-    LuaVal(std::initializer_list<LuaVal const> const & l);
+    LuaVal(std::initializer_list<LuaVal> const & l) : tag(TTABLE), tbl_ptr(new LuaTable()), d(0), b(false)
+    {
+        InitializeSequence(l);
+    }
+    template<typename T> LuaVal(std::initializer_list<T> const & l) : tag(TTABLE), tbl_ptr(new LuaTable()), d(0), b(false)
+    {
+        InitializeSequence(l);
+    }
+    LuaVal(std::vector<LuaVal> const & l) : tag(TTABLE), tbl_ptr(new LuaTable()), d(0), b(false)
+    {
+        InitializeSequence(l);
+    }
+    template<typename T> LuaVal(std::vector<T> const & l) : tag(TTABLE), tbl_ptr(new LuaTable()), d(0), b(false)
+    {
+        InitializeSequence(l);
+    }
+    LuaVal(std::list<LuaVal> const & l) : tag(TTABLE), tbl_ptr(new LuaTable()), d(0), b(false)
+    {
+        InitializeSequence(l);
+    }
+    template<typename T> LuaVal(std::list<T> const & l) : tag(TTABLE), tbl_ptr(new LuaTable()), d(0), b(false)
+    {
+        InitializeSequence(l);
+    }
+    template<size_t C> LuaVal(std::array<LuaVal, C> const & l) : tag(TTABLE), tbl_ptr(new LuaTable()), d(0), b(false)
+    {
+        InitializeSequence(l);
+    }
+    template<typename T, size_t C> LuaVal(std::array<T, C> const & l) : tag(TTABLE), tbl_ptr(new LuaTable()), d(0), b(false)
+    {
+        InitializeSequence(l);
+    }
+    LuaVal(std::deque<LuaVal> const & l) : tag(TTABLE), tbl_ptr(new LuaTable()), d(0), b(false)
+    {
+        InitializeSequence(l);
+    }
+    template<typename T> LuaVal(std::deque<T> const & l) : tag(TTABLE), tbl_ptr(new LuaTable()), d(0), b(false)
+    {
+        InitializeSequence(l);
+    }
+    LuaVal(std::forward_list<LuaVal> const & l) : tag(TTABLE), tbl_ptr(new LuaTable()), d(0), b(false)
+    {
+        InitializeSequence(l);
+    }
+    template<typename T> LuaVal(std::forward_list<T> const & l) : tag(TTABLE), tbl_ptr(new LuaTable()), d(0), b(false)
+    {
+        InitializeSequence(l);
+    }
+    LuaVal(std::map<LuaVal, LuaVal> const & l) : tag(TTABLE), tbl_ptr(new LuaTable()), d(0), b(false)
+    {
+        InitializeMap(l);
+    }
+    template<typename K, typename V> LuaVal(std::map<K, V> const & l) : tag(TTABLE), tbl_ptr(new LuaTable()), d(0), b(false)
+    {
+        InitializeMap(l);
+    }
+    LuaVal(std::unordered_map<LuaVal, LuaVal> const & l) : tag(TTABLE), tbl_ptr(new LuaTable()), d(0), b(false)
+    {
+        InitializeMap(l);
+    }
+    template<typename K, typename V> LuaVal(std::unordered_map<K, V> const & l) : tag(TTABLE), tbl_ptr(new LuaTable()), d(0), b(false)
+    {
+        InitializeMap(l);
+    }
     static LuaVal table() { return LuaVal(TTABLE); }
     static LuaVal mrg(LuaVal const & l, LuaVal const & r)
     {
@@ -94,6 +163,7 @@ public:
     // gettable, adds key-nil pair if not existing
     // nil key throws error
     LuaVal & operator[](LuaVal const & k);
+    LuaVal const & operator[](LuaVal const & k) const;
     // gettable
     LuaVal const & get(LuaVal const & k) const;
     // returns true if value was found with key
@@ -175,6 +245,32 @@ public:
     }
 
 private:
+
+    template<typename T> void InitializeSequence(T const & l)
+    {
+        LuaTable & tbl = *tbl_ptr;
+        unsigned int i = 0;
+        for (auto const & v : l)
+        {
+            LuaVal vv(v);
+            if (vv.isnil())
+                ++i;
+            else
+                tbl[++i] = std::move(vv);
+        }
+    }
+
+    template<typename T> void InitializeMap(T const & l)
+    {
+        LuaTable & tbl = *tbl_ptr;
+        for (auto const & e : l)
+        {
+            LuaVal k(e.first);
+            LuaVal v(e.second);
+            if (!k.isnil() && !v.isnil())
+                tbl[std::move(k)] = std::move(v);
+        }
+    }
 
     LuaTypeTag tag;
     TblPtr tbl_ptr;

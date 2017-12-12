@@ -78,19 +78,6 @@ size_t LuaVal::LuaValHasher::operator()(LuaVal const & v) const
     return std::hash<std::string>()(v.tostring());
 }
 
-LuaVal::LuaVal(std::initializer_list<LuaVal const> const & l) : tag(TTABLE), tbl_ptr(new LuaTable()), d(0), b(false)
-{
-    LuaTable & tbl = *tbl_ptr;
-    unsigned int i = 0;
-    for (auto&& v : l)
-    {
-        if (v.isnil())
-            ++i;
-        else
-            tbl[++i] = v;
-    }
-}
-
 LuaVal & LuaVal::operator[](LuaVal const & k)
 {
     if (!istable())
@@ -99,6 +86,11 @@ LuaVal & LuaVal::operator[](LuaVal const & k)
         throw smallfolk_exception("using [] with nil key");
     LuaTable & tbl = (*tbl_ptr);
     return tbl[k];
+}
+
+LuaVal const & LuaVal::operator[](LuaVal const & k) const
+{
+    return get(k);
 }
 
 LuaVal const & LuaVal::get(LuaVal const & k) const
@@ -260,7 +252,7 @@ std::string LuaVal::dumps(std::string * errmsg) const
         Serializer::dump_object(*this, nmemo, memo, acc);
         return acc.str();
     }
-    catch (std::exception& e)
+    catch (smallfolk_exception const & e)
     {
         if (errmsg)
             *errmsg += e.what();
@@ -276,7 +268,7 @@ LuaVal LuaVal::loads(std::string const & string, std::string * errmsg)
         size_t i = 0;
         return Serializer::expect_object(string, i, tables);
     }
-    catch (std::exception& e)
+    catch (smallfolk_exception const & e)
     {
         if (errmsg)
             *errmsg += e.what();
