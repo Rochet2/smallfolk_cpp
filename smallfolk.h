@@ -114,6 +114,14 @@ public:
     {
         InitializeSequence(l);
     }
+    LuaVal(std::map<LuaVal, LuaVal> const & l) : tag(TTABLE), tbl_ptr(new LuaTable()), d(0), b(false)
+    {
+        InitializeMap(l);
+    }
+    template<typename K, typename V> LuaVal(std::map<K, V> const & l) : tag(TTABLE), tbl_ptr(new LuaTable()), d(0), b(false)
+    {
+        InitializeMap(l);
+    }
     LuaVal(std::unordered_map<LuaVal, LuaVal> const & l) : tag(TTABLE), tbl_ptr(new LuaTable()), d(0), b(false)
     {
         InitializeMap(l);
