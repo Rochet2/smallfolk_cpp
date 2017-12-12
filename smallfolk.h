@@ -37,14 +37,6 @@ enum LuaTypeTag
     TBOOL,
 };
 
-namespace std {
-    template <>
-    class hash<LuaVal> {
-    public:
-        size_t operator()(LuaVal const & v) const;
-    };
-}
-
 class LuaVal
 {
 public:
@@ -273,5 +265,16 @@ private:
     double d;
     bool b;
 };
+
+namespace std {
+    template <>
+    class hash<LuaVal> {
+    public:
+        size_t operator()(LuaVal const & v) const
+        {
+            return LuaVal::LuaValHasher h()(v);
+        };
+    };
+}
 
 #endif
