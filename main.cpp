@@ -244,7 +244,7 @@ int main()
 
     std::forward_list<std::deque<std::string>> vec = { { "a", "b" },{ "a", "b" } };
     std::unordered_map<std::string, std::string> m;
-    std::array<std::string, 2> ar = {"d", "v"};
+    std::array<std::string, 2> ar({"d", "v"});
     m["test"] = "asd";
     LuaVal t441 = vec;
     std::cout << t441.dumps() << std::endl;
