@@ -15,8 +15,6 @@
 #include <cstddef> // size_t
 #include <utility> // std::move
 
-class LuaVal;
-
 class smallfolk_exception : public std::logic_error
 {
 public:
@@ -54,7 +52,7 @@ public:
         size_t operator()(LuaVal const & v) const;
     };
 
-    typedef std::unordered_map<LuaVal, LuaVal, LuaValHasher> LuaTable;
+    typedef std::unordered_map<LuaVal, LuaVal> LuaTable;
     typedef std::unique_ptr<LuaTable> TblPtr; // circular reference memleak if insert self to self
 
     LuaVal(const LuaTypeTag tag) : tag(tag), tbl_ptr(tag == TTABLE ? new LuaTable() : nullptr), d(0), b(false) {}
@@ -115,6 +113,14 @@ public:
     template<typename T> LuaVal(std::forward_list<T> const & l) : tag(TTABLE), tbl_ptr(new LuaTable()), d(0), b(false)
     {
         InitializeSequence(l);
+    }
+    LuaVal(std::unordered_map<LuaVal, LuaVal> const & l) : tag(TTABLE), tbl_ptr(new LuaTable()), d(0), b(false)
+    {
+        InitializeMap(l);
+    }
+    template<typename K, typename V> LuaVal(std::unordered_map<K, V> const & l) : tag(TTABLE), tbl_ptr(new LuaTable()), d(0), b(false)
+    {
+        InitializeMap(l);
     }
     static LuaVal table() { return LuaVal(TTABLE); }
     static LuaVal mrg(LuaVal const & l, LuaVal const & r)
