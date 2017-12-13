@@ -62,6 +62,11 @@ std::string LuaVal::tostring() const
 
 size_t LuaVal::LuaValHasher::operator()(LuaVal const & v) const
 {
+    return LuaValHash(v);
+}
+
+size_t LuaValHash(LuaVal const & v)
+{
     switch (v.tag)
     {
     case TBOOL:
