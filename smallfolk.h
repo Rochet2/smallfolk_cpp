@@ -135,7 +135,7 @@ public:
     {
         InitializeMap(l);
     }
-    LuaVal(std::unordered_map<LuaVal, LuaVal> const & l) : tag(TTABLE), tbl_ptr(new LuaTable(luatable)), d(0), b(false)
+    LuaVal(std::unordered_map<LuaVal, LuaVal> const & l) : tag(TTABLE), tbl_ptr(new LuaTable(l)), d(0), b(false)
     {
     }
     template<typename K, typename V> LuaVal(std::unordered_map<K, V> const & l) : tag(TTABLE), tbl_ptr(new LuaTable()), d(0), b(false)
