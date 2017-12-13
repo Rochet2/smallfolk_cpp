@@ -283,6 +283,8 @@ private:
                 tbl[std::move(k)] = std::move(v);
         }
     }
+    
+    friend size_t LuaValHash(LuaVal const & v);
 
     LuaTypeTag tag;
     TblPtr tbl_ptr;
