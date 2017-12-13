@@ -78,7 +78,7 @@ size_t LuaValHash(LuaVal const & v)
     case TNUMBER:
         return std::hash<double>()(v.d);
     case TTABLE:
-        return std::hash<TblPtr>()(v.tbl_ptr);
+        return std::hash<LuaVal::TblPtr>()(v.tbl_ptr);
     }
     return std::hash<std::string>()(v.tostring());
 }
