@@ -35,6 +35,20 @@ enum LuaTypeTag
     TBOOL,
 };
 
+class LuaVal;
+size_t LuaValHash(LuaVal const & v);
+
+namespace std {
+    template <>
+    struct hash<LuaVal> {
+    public:
+        size_t operator()(LuaVal const & v) const
+        {
+            return LuaValHash(v);
+        };
+    };
+}
+
 class LuaVal
 {
 public:
@@ -52,7 +66,7 @@ public:
         size_t operator()(LuaVal const & v) const;
     };
 
-    typedef std::unordered_map<LuaVal, LuaVal, LuaValHasher> LuaTable;
+    typedef std::unordered_map<LuaVal, LuaVal> LuaTable;
     typedef std::unique_ptr<LuaTable> TblPtr; // circular reference memleak if insert self to self
 
     LuaVal(const LuaTypeTag tag) : tag(tag), tbl_ptr(tag == TTABLE ? new LuaTable() : nullptr), d(0), b(false) {}
@@ -63,7 +77,6 @@ public:
     LuaVal(const std::string & s) : tag(TSTRING), tbl_ptr(nullptr), s(s), d(0), b(false) {}
     LuaVal(const char * s) : tag(TSTRING), tbl_ptr(nullptr), s(s), d(0), b(false) {}
     LuaVal(const bool b) : tag(TBOOL), tbl_ptr(nullptr), d(0), b(b) {}
-    LuaVal(LuaTable const & luatable) : tag(TTABLE), tbl_ptr(new LuaTable(luatable)), d(0), b(false) {}
     LuaVal(LuaVal const & val) : tag(val.tag), tbl_ptr(val.tag == TTABLE ? val.tbl_ptr ? new LuaTable(*val.tbl_ptr) : new LuaTable() : nullptr), s(val.s), d(val.d), b(val.b) {}
     LuaVal(LuaVal && val) noexcept : tag(std::move(val.tag)), tbl_ptr(std::move(val.tbl_ptr)), s(std::move(val.s)), d(std::move(val.d)), b(std::move(val.b)) {}
     LuaVal(std::initializer_list<LuaVal> const & l) : tag(TTABLE), tbl_ptr(new LuaTable()), d(0), b(false)
@@ -122,9 +135,8 @@ public:
     {
         InitializeMap(l);
     }
-    LuaVal(std::unordered_map<LuaVal, LuaVal> const & l) : tag(TTABLE), tbl_ptr(new LuaTable()), d(0), b(false)
+    LuaVal(std::unordered_map<LuaVal, LuaVal> const & l) : tag(TTABLE), tbl_ptr(new LuaTable(l)), d(0), b(false)
     {
-        InitializeMap(l);
     }
     template<typename K, typename V> LuaVal(std::unordered_map<K, V> const & l) : tag(TTABLE), tbl_ptr(new LuaTable()), d(0), b(false)
     {
@@ -271,6 +283,8 @@ private:
                 tbl[std::move(k)] = std::move(v);
         }
     }
+    
+    friend size_t LuaValHash(LuaVal const & v);
 
     LuaTypeTag tag;
     TblPtr tbl_ptr;

@@ -62,6 +62,11 @@ std::string LuaVal::tostring() const
 
 size_t LuaVal::LuaValHasher::operator()(LuaVal const & v) const
 {
+    return LuaValHash(v);
+}
+
+size_t LuaValHash(LuaVal const & v)
+{
     switch (v.tag)
     {
     case TBOOL:
@@ -73,7 +78,7 @@ size_t LuaVal::LuaValHasher::operator()(LuaVal const & v) const
     case TNUMBER:
         return std::hash<double>()(v.d);
     case TTABLE:
-        return std::hash<TblPtr>()(v.tbl_ptr);
+        return std::hash<LuaVal::TblPtr>()(v.tbl_ptr);
     }
     return std::hash<std::string>()(v.tostring());
 }
