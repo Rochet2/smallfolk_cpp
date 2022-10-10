@@ -28,21 +28,25 @@ int main()
         LuaVal implicit_test = -123;
         LuaVal copy_test(implicit_test);
         LuaVal copy_test2 = implicit_test;
-        LuaVal n; // nil
+        LuaVal n = LuaVal::nil; // nil
+        LuaVal n2(TNIL); // nil
         LuaVal b(true);
         LuaVal s("somestring");
         LuaVal d(123.456);
         LuaVal f(123.456f);
         LuaVal i(-678);
         LuaVal u(0xFFFFFFFF);
-        LuaVal t(TTABLE);
+        LuaVal t; // defaults to table
         LuaVal t2 = LuaVal::table();
         LuaVal t3 = { 1, 2, 3 };
+        LuaVal t4 = {}; // curly braces are table
+        LuaVal t5(TTABLE);
 
         assert(implicit_test.isnumber());
         assert(copy_test.isnumber());
         assert(copy_test2.isnumber());
         assert(n.isnil());
+        assert(n2.isnil());
         assert(b.isbool());
         assert(s.isstring());
         assert(d.isnumber());
@@ -52,6 +56,8 @@ int main()
         assert(t.istable());
         assert(t2.istable());
         assert(t3.istable());
+        assert(t4.istable());
+        assert(t5.istable());
 
         std::cout << implicit_test.tostring() << std::endl;
         std::cout << copy_test.tostring() << std::endl;
@@ -150,28 +156,33 @@ int main()
 
     {
         std::cout << "Table initializer list coolness" << std::endl;
-        std::cout << "Watch out for quirks though!" << std::endl;
-        std::cout << "What stuff evaluates to depends on your compiler and C++ version!" << std::endl;
-        std::cout << "{} evaluates to nil" << std::endl;
-        std::cout << "{{}} evaluates to a nil inside a table" << std::endl;
+        std::cout << "{} evaluates to table" << std::endl;
+        std::cout << "{{}} evaluates to a table inside a table" << std::endl;
         std::cout << "{5} evaluates to 5 being inside a table" << std::endl;
-        std::cout << "{LuaVal(5)} evaluates to just 5 instead of being a 5 inside a table" << std::endl;
+        std::cout << "{LuaVal(5)} evaluates to 5 inside a table" << std::endl;
 
-        // Watch out for quirks though as seen in the serialized output: http://stackoverflow.com/questions/26947704/implicit-conversion-failure-from-initializer-list
         LuaVal nested = { {}, {{}}, { 3 }, { LuaVal(4) } };
-        std::cout << nested.dumps() << std::endl;
+        std::cout << nested.dumps() << std::endl; // Outputs {{},{{}},{3},{4}}
         std::cout << std::endl;
     }
 
     {
         std::cout << "test accessing table with [] operator" << std::endl;
         std::cout << "Note that table keys cannot be accessed!" << std::endl;
-        std::cout << "Notice the excessive amount of nils left behind!" << std::endl;
+        std::cout << "Notice the excessive amount of tables left behind!" << std::endl;
+        LuaVal nested = {};
+        nested[1];
+        nested[2];
+        nested[3];
+        nested[4][5][6]; // handy for quick creation of nested indexes
+        std::cout << nested.dumps() << std::endl; // Outputs {{},{},{},{5:{6:{}}}}
+        std::cout << std::endl;
 
+        // To avoid unnecessary tables, use set and get (similar to at in c++ for map)
         LuaVal table(TTABLE);
         table.set(1, "test");
         std::cout << table.dumps() << std::endl;
-        table.set(1, LuaVal()); // removing value through setting it to nil
+        table.set(1, LuaVal::nil); // removing value through setting it to nil
         std::cout << table.dumps() << std::endl;
         table.set(table, "table as key?");
         std::cout << table.dumps() << std::endl;
@@ -210,7 +221,7 @@ int main()
 
     {
         LuaVal val = 5;
-        LuaVal val2;
+        LuaVal val2 = LuaVal::nil;
         if (val)
             std::cout << "bool() works" << std::endl;
         if (!val2)

@@ -128,20 +128,20 @@ Constructors do not throw. Watch out for quirks with initializer list constructo
 LuaVal implicit_test = -123;
 LuaVal copy_test(implicit_test);
 LuaVal copy_test2 = implicit_test;
-LuaVal n; // nil
+LuaVal n = LuaVal::nil; // nil
+LuaVal n2(TNIL); // nil
 LuaVal b(true);
 LuaVal s("a string");
 LuaVal d(123.456);
 LuaVal f(123.456f);
 LuaVal i(-678);
 LuaVal u(0xFFFFFFF);
-LuaVal t1(TTABLE); // create a value through typetag creates empty or zero initialized value
-LuaVal t2 = LuaVal::table(); // another way to create tables
-LuaVal t3 = { 1, 2, { 1,2,3 } }; // initializer list is supported for making sequences (tables)
-LuaVal t4 = LuaVal::LuaTable{ { "key", "value" }, { 2, "value2" } }; // Table can be created with map table initializer list constructor also
-
-// watch out - depending on C++ version serializes to {2:{},3:{3},4:4}
-LuaVal quirks = { {}, {{}}, { 3 }, { LuaVal(4) } };
+LuaVal t; // defaults to table
+LuaVal t2 = LuaVal::table();
+LuaVal t3 = { 1, 2, { 1,2,3 } };
+LuaVal t4 = {};
+LuaVal t5(TTABLE);
+LuaVal t6 = LuaVal::LuaTable{ { "key", "value" }, { 2, "value2" } }; // Table can be created with map table initializer list constructor also
 
 // You can mix and match a lot of different types and containers for creating tables.
 // For example vectors, lists, maps, arrays are supported for creating LuaVal.
@@ -222,7 +222,7 @@ The function `set` returns the accessed table itself, so you can chain it to set
 When a value is attempted to be set as nil, it will be erased from the table instead.
 These functions do not throw unless you use them on non table objects or with nil keys. `luaval.setignore(key, value)` works like `luaval.set(key, value)`, except it will not do anything if a value already exists in the table for that key.
 
-The get method above will provide only const reference access to the table elements. For non const access to elements you must use the `[]` operator like so `luaval[key]`. If the accessed key does not exist in the accessed table then a nil value is created to the table for that key. This means that accessing nonexisting elements will create clutter to the table. Setting a value to nil will not erase it from the table.
+The get method above will provide only const reference access to the table elements. For non const access to elements you must use the `[]` operator like so `luaval[key]`. If the accessed key does not exist in the accessed table then a table value is created to the table for that key. This means that accessing nonexisting elements will create clutter to the table. Setting a value to nil using brackets will store a nil value to the table instead of removing the key from the table.
 This operator does not throw unless you use it on non table objects or with nil keys.
 
 `luaval.has(key)` can be used to check if a value can be found in a table.
