@@ -37,7 +37,7 @@ namespace Serializer
     LuaVal expect_object(std::string const & string, size_t& i, TABLES& tables);
 }
 
-LuaVal const LuaVal::nil;
+LuaVal const LuaVal::nil(TNIL);
 
 std::string LuaVal::tostring() const
 {
@@ -278,7 +278,7 @@ LuaVal LuaVal::loads(std::string const & string, std::string * errmsg)
         if (errmsg)
             *errmsg += e.what();
     }
-    return LuaVal();
+    return LuaVal::nil;
 }
 
 bool LuaVal::operator==(LuaVal const& rhs) const
@@ -561,7 +561,7 @@ LuaVal Serializer::expect_object(std::string const & string, size_t & i, Seriali
     case 'f':
         return false;
     case 'n':
-        return LuaVal();
+        return LuaVal::nil;
     case 'Q':
         return -(0 / _zero);
     case 'N':
@@ -669,7 +669,7 @@ LuaVal Serializer::expect_object(std::string const & string, size_t & i, Seriali
         break;
     }
     }
-    return LuaVal();
+    return LuaVal::nil;
 }
 
 smallfolk_exception::smallfolk_exception(const char * format, ...) : std::logic_error("Smallfolk exception")

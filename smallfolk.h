@@ -53,7 +53,7 @@ class LuaVal
 {
 public:
 
-    // static nil value, same as LuaVal();
+    // static nil value, same as LuaVal(TNIL);
     // You can use it as for example as default const reference
     static LuaVal const nil;
 
@@ -70,7 +70,7 @@ public:
     typedef std::unique_ptr<LuaTable> TblPtr; // circular reference memleak if insert self to self
 
     LuaVal(const LuaTypeTag tag) : tag(tag), tbl_ptr(tag == TTABLE ? new LuaTable() : nullptr), d(0), b(false) {}
-    LuaVal() : tag(TNIL), tbl_ptr(nullptr), d(0), b(false) {}
+    LuaVal() : tag(TTABLE), tbl_ptr(new LuaTable()), d(0), b(false) {}
     LuaVal(const int d) : tag(TNUMBER), tbl_ptr(nullptr), d(d), b(false) {}
     LuaVal(const unsigned int d) : tag(TNUMBER), tbl_ptr(nullptr), d(d), b(false) {}
     LuaVal(const double d) : tag(TNUMBER), tbl_ptr(nullptr), d(d), b(false) {}
