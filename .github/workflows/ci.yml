@@ -1,0 +1,17 @@
+name: C/C++ CI
+
+on:
+  push:
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+    - uses: actions/checkout@v3
+    - name: Build and run
+      run: |
+        mkdir bin
+        cd bin
+        cmake ../
+        make
+        ./smallfolk_cpp
