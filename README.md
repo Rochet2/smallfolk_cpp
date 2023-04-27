@@ -1,7 +1,5 @@
 # smallfolk_cpp
 
-[![Build Status](https://travis-ci.org/Rochet2/smallfolk_cpp.svg?branch=master)](https://travis-ci.org/Rochet2/smallfolk_cpp)
-
 Smallfolk_cpp is a library for representing `Lua` values in `C++` and (de)serializing them. The serialization is made to work with smallfolk serializer made for lua. Most serializer logic is borrowed from gvx/Smallfolk. https://github.com/gvx/Smallfolk
 
 Smallfolk_cpp does not have dependencies other than `C++11` and it **does not need lua**. It simply uses same format and logic as gvx/Smallfolk for serialization.
