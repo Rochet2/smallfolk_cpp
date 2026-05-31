@@ -373,9 +373,14 @@ static void test_object_allows_extra_when_configured()
     expect_true(validate(value, loose_object_schema), "object with allow_extra_keys accepts unknown fields");
 }
 
+static Schema const depth_limit_schema = [] {
+    Schema inner = schema::array_of(schema::number());
+    return schema::array_of(std::move(inner));
+}();
+
 static void test_validate_depth_limit()
 {
-    CompiledSchema compiled(schema::array_of(schema::array_of(schema::number())));
+    CompiledSchema compiled(depth_limit_schema);
     ValidateLimits tight;
     tight.max_validation_depth = 1;
 
