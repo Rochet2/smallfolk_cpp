@@ -4,6 +4,7 @@
 #include <cmath>
 #include <cstdint>
 #include <iostream>
+#include <limits>
 #include <sstream>
 #include <string>
 
@@ -71,8 +72,12 @@ static void test_round_trip_basic()
 
 static void test_non_finite_numbers()
 {
-    double zero = 0.0;
-    LuaVal values = { -(zero / zero), (zero / zero), (1.0 / zero), -(1.0 / zero) };
+    LuaVal values = {
+        -std::numeric_limits<double>::quiet_NaN(),
+        std::numeric_limits<double>::quiet_NaN(),
+        std::numeric_limits<double>::infinity(),
+        -std::numeric_limits<double>::infinity()
+    };
     std::string serialized = values.dumps();
     expect_true(!serialized.empty(), "non-finite values serialize");
     expect_true(serialized.find("nan") == std::string::npos, "non-finite wire uses N/Q tokens");

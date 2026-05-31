@@ -6,6 +6,7 @@
 #include <cmath> // std::floor, std::isfinite
 #include <cstdlib> // std::strtod
 #include <cstdio> // std::snprintf
+#include <cstring> // std::strcmp
 #include <limits>
 #include <stdarg.h> // va_start
 #include <functional> // std::hash
@@ -144,7 +145,35 @@ namespace Serializer
 
     inline bool is_nan_value(double value)
     {
-        return value != value || std::isnan(value);
+        return std::fpclassify(value) == FP_NAN;
+    }
+
+    inline bool is_inf_value(double value)
+    {
+        return std::fpclassify(value) == FP_INFINITE;
+    }
+
+    inline void append_number_token(ACC & acc, double value)
+    {
+        if (is_nan_value(value))
+        {
+            acc << (std::signbit(value) ? 'Q' : 'N');
+            return;
+        }
+        if (is_inf_value(value))
+        {
+            acc << (value < 0.0 ? 'i' : 'I');
+            return;
+        }
+
+        char buf[64];
+        std::snprintf(buf, sizeof(buf), "%.17g", value);
+        if (std::strcmp(buf, "nan") == 0 || std::strcmp(buf, "-nan") == 0)
+            acc << (buf[0] == '-' ? 'Q' : 'N');
+        else if (std::strcmp(buf, "inf") == 0 || std::strcmp(buf, "-inf") == 0)
+            acc << (buf[0] == '-' ? 'i' : 'I');
+        else
+            acc << buf;
     }
 
     inline std::string tostring(const double d)
@@ -1018,16 +1047,8 @@ unsigned int Serializer::dump_object(LuaVal const & object, unsigned int nmemo, 
         acc << '"';
         break;
     case TNUMBER:
-    {
-        double const value = object.num();
-        if (is_nan_value(value))
-            acc << (std::signbit(value) ? 'Q' : 'N'); // Smallfolk non-finite encodings
-        else if (std::isinf(value))
-            acc << (value < 0.0 ? 'i' : 'I');
-        else
-            acc << value;
+        append_number_token(acc, object.num());
         break;
-    }
     case TTABLE:
         return dump_type_table(object, nmemo, memo, acc);
     default:
