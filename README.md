@@ -31,6 +31,8 @@ cmake -B build -DSMALLFOLK_BUIlen()LD_TESTS=ON -DSMALLFOLK_BUILD_BENCHMARK=ON
 cmake --build build
 ctest --test-dir build --output-on-failure   # if you enable CTest
 ./build/smallfolk_tests
+./build/smallfolk_schema_tests
+./build/smallfolk_demo
 ./build/smallfolk_benchmark
 ```
 
@@ -133,7 +135,7 @@ Tune limits for your deployment. See [ASSUMPTIONS.md](ASSUMPTIONS.md) for what i
 
 ## Tested
 
-Automated tests live in `tests/test_smallfolk.cpp` and `tests/test_schema.cpp`, run via the `smallfolk_tests` and `smallfolk_schema_tests` targets.
+Automated tests live in `tests/test_smallfolk.cpp` and `tests/test_schema.cpp`, run via the `smallfolk_tests` and `smallfolk_schema_tests` targets. The original interactive walkthrough from `main.cpp` now lives in `examples/demo.cpp` as the `smallfolk_demo` target (also run by CTest when `-DSMALLFOLK_BUILD_EXAMPLES=ON`, default).
 
 The code has also been in use with a server-client C++-Lua communication system called AIO through which the API has been made more usable and critical issues have been addressed.
 

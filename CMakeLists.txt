@@ -3,6 +3,7 @@ project(smallfolk_cpp VERSION 1.0.0 LANGUAGES CXX)
 
 option(SMALLFOLK_BUILD_TESTS "Build the test runner" ON)
 option(SMALLFOLK_BUILD_BENCHMARK "Build the benchmark runner" ON)
+option(SMALLFOLK_BUILD_EXAMPLES "Build the interactive demo example" ON)
 
 add_library(smallfolk smallfolk.cpp smallfolk_schema.cpp)
 add_library(smallfolk_cpp::smallfolk ALIAS smallfolk)
@@ -38,6 +39,20 @@ if(SMALLFOLK_BUILD_TESTS)
             -Wall -Wextra -Werror -Wno-long-long -pedantic
         )
         target_compile_options(smallfolk_schema_tests PRIVATE
+            -Wall -Wextra -Werror -Wno-long-long -pedantic
+        )
+    endif()
+endif()
+
+if(SMALLFOLK_BUILD_EXAMPLES)
+    if(NOT SMALLFOLK_BUILD_TESTS)
+        enable_testing()
+    endif()
+    add_executable(smallfolk_demo examples/demo.cpp)
+    target_link_libraries(smallfolk_demo PRIVATE smallfolk)
+    add_test(NAME smallfolk_demo COMMAND smallfolk_demo)
+    if(NOT MSVC)
+        target_compile_options(smallfolk_demo PRIVATE
             -Wall -Wextra -Werror -Wno-long-long -pedantic
         )
     endif()
