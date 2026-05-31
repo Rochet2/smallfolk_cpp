@@ -56,7 +56,7 @@ static void test_round_trip_basic()
     LuaVal table = LuaVal::table();
     table.set(1, "Hello");
     table.set(std::string("test"), std::string("world"));
-    table.set(67.5, -234.5);
+    table.set(LuaVal(67.5), -234.5);
 
     std::string serialized = table.dumps();
     expect_true(!serialized.empty(), "basic serialize succeeds");
@@ -66,7 +66,7 @@ static void test_round_trip_basic()
     expect_true(err.empty(), "basic loads has no error");
     expect_true(deserialized.get(1).str() == "Hello", "round-trip index 1");
     expect_true(deserialized.get(std::string("test")).str() == "world", "round-trip string key");
-    expect_true(deserialized.get(67.5).num() == -234.5, "round-trip numeric key");
+    expect_true(deserialized.get(LuaVal(67.5)).num() == -234.5, "round-trip numeric key");
 }
 
 static void test_non_finite_numbers()

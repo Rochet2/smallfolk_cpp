@@ -22,10 +22,10 @@ namespace
 int main()
 {
     LuaVal sample = {
-        true,
-        "somestring",
-        123.456,
-        true,
+        LuaVal(true),
+        LuaVal("somestring"),
+        LuaVal(123.456),
+        LuaVal(true),
         lua_val::map({
             { "t", -678 },
             { "test", 123.45600128173828 },
