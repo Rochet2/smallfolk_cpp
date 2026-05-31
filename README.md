@@ -13,7 +13,7 @@ You use, distribute and extend Smallfolk_cpp under the terms of the MIT license.
 
 See [ASSUMPTIONS.md](ASSUMPTIONS.md) for documented behavioral assumptions (copy semantics, comparison, limits, and security).
 
-See [CHANGELOG.md](CHANGELOG.md) for release history (current version **2.0.0**).
+See [CHANGELOG.md](CHANGELOG.md) for release history (current version **2.0.1**).
 
 ## Add to your project
 
