@@ -7,6 +7,7 @@
 #include <cstdlib> // std::strtod
 #include <cstdio> // std::snprintf
 #include <cstring> // std::strcmp
+#include <limits>
 #include <stdarg.h> // va_start
 #include <functional> // std::hash
 #include <mutex>
@@ -1195,8 +1196,6 @@ LuaVal Serializer::expect_number(std::string const & string, size_t & start, Par
 
 LuaVal Serializer::expect_object(std::string const & string, size_t & i, Serializer::TABLES & tables, ParseContext & ctx)
 {
-    static volatile double zero = 0.0;
-
     char cc = strat(string, i++);
     switch (cc)
     {
@@ -1235,12 +1234,12 @@ LuaVal Serializer::expect_object(std::string const & string, size_t & i, Seriali
             throw smallfolk_exception("non-finite number encoding rejected at %zu", i - 1);
         ctx.on_value_created();
         if (cc == 'Q')
-            return -(zero / zero);
+            return -std::nan("");
         if (cc == 'N')
-            return (zero / zero);
+            return std::nan("");
         if (cc == 'I')
-            return (1.0 / zero);
-        return -(1.0 / zero);
+            return std::numeric_limits<double>::infinity();
+        return -std::numeric_limits<double>::infinity();
     case '\'':
     case '"':
     {

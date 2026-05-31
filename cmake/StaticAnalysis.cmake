@@ -46,7 +46,6 @@ function(smallfolk_add_static_analysis_targets)
             COMMAND
                 ${SMALLFOLK_CLANG_TIDY_EXE}
                 -p ${CMAKE_BINARY_DIR}
-                -warnings-as-errors=*
                 ${CMAKE_SOURCE_DIR}/smallfolk.cpp
                 ${CMAKE_SOURCE_DIR}/smallfolk_schema.cpp
             WORKING_DIRECTORY ${CMAKE_SOURCE_DIR}

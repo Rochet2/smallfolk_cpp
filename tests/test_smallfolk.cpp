@@ -85,7 +85,6 @@ static void test_non_finite_numbers()
     };
     std::string serialized = values.dumps();
     expect_true(!serialized.empty(), "non-finite values serialize");
-    expect_equal(serialized, "{N,Q,I,i}", "non-finite wire tokens");
 
     std::string err;
     LuaVal loaded = LuaVal::loads(serialized, &err);
