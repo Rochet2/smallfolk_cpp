@@ -771,20 +771,10 @@ unsigned int Serializer::dump_object(LuaVal const & object, unsigned int nmemo, 
         acc << '"';
         break;
     case TNUMBER:
-        if (!std::isfinite(object.num()))
-        {
-            std::string nn = tostring(object.num());
-            if (nn == "inf")
-                acc << 'I';
-            else if (nn == "-inf")
-                acc << 'i';
-            else if (nn == "-nan(ind)")
-                acc << 'N';
-            else if (nn == "nan")
-                acc << 'Q';
-            else
-                acc << 'I';
-        }
+        if (std::isnan(object.num()))
+            acc << (std::signbit(object.num()) ? 'Q' : 'N');
+        else if (std::isinf(object.num()))
+            acc << (object.num() < 0 ? 'i' : 'I');
         else
             acc << object.num();
         break;
