@@ -1,0 +1,12 @@
+# Benign or intentional patterns in this C++11 header-library codebase.
+missingIncludeSystem
+unusedFunction
+useStlAlgorithm
+noExplicitConstructor
+shadowFunction
+knownConditionTrueFalse
+unsignedLessThanZero
+passedByValue
+constVariableReference
+duplicateExpression
+normalCheckLevelMaxBranches

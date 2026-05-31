@@ -1,12 +1,18 @@
 cmake_minimum_required(VERSION 3.16)
-project(smallfolk_cpp VERSION 2.0.0 LANGUAGES CXX)
+project(smallfolk_cpp VERSION 2.0.1 LANGUAGES CXX)
 
 option(SMALLFOLK_BUILD_TESTS "Build the test runner" ON)
 option(SMALLFOLK_BUILD_BENCHMARK "Build the benchmark runner" ON)
 option(SMALLFOLK_BUILD_EXAMPLES "Build the interactive demo example" ON)
+option(SMALLFOLK_ENABLE_CLANG_TIDY "Attach clang-tidy to library targets when available" OFF)
+
+include(cmake/StaticAnalysis.cmake)
+
+set(CMAKE_EXPORT_COMPILE_COMMANDS ON)
 
 add_library(smallfolk smallfolk.cpp smallfolk_schema.cpp)
 add_library(smallfolk_cpp::smallfolk ALIAS smallfolk)
+smallfolk_enable_clang_tidy(smallfolk)
 target_include_directories(smallfolk PUBLIC
     "$<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}>"
     "$<INSTALL_INTERFACE:include>"
@@ -80,3 +86,5 @@ install(EXPORT smallfolk_cppTargets
     NAMESPACE smallfolk_cpp::
     DESTINATION ${CMAKE_INSTALL_LIBDIR}/cmake/smallfolk_cpp
 )
+
+smallfolk_add_static_analysis_targets()

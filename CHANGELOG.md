@@ -2,6 +2,24 @@
 
 All notable changes to this project are documented in this file.
 
+## [2.0.1] - 2026-05-31
+
+### Added
+
+- **README** — v2 API docs (safe lookup, path API, throwing loads/dumps, typed accessors, `lua_val` factories); link to `CHANGELOG.md`; static analysis usage.
+- **Static analysis** — `.clang-tidy`, `cmake/StaticAnalysis.cmake`, `cppcheck-suppressions.txt`, and Ubuntu CI job (cppcheck + clang-tidy).
+- **Tests** — expanded `smallfolk_tests` / `smallfolk_schema_tests` coverage; fixed gvx/Lua Smallfolk wire interop fixtures in `test_lua_smallfolk_interop_wires()`.
+
+### Fixed
+
+- **Non-finite wire on glibc/libstdc++** — NaN/Inf values serialize as gvx tokens (`N`/`Q`/`I`/`i`) instead of libc `nan`/`inf` text that broke round-trip on Linux/macOS; parse `nan` literals and map `N`/`Q` via `std::nan`.
+- **Schema depth-limit test** — avoid dangling `CompiledSchema` reference to a temporary nested schema (validation spuriously passed on GCC).
+
+### Changed
+
+- Restored pre-v2 API and serializer comments in `smallfolk.h` / `smallfolk.cpp`.
+- README build instructions: fix `SMALLFOLK_BUILD_TESTS` cmake typo.
+
 ## [2.0.0] - 2026-05-31
 
 ### Added

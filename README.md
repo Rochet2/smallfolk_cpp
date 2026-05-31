@@ -13,6 +13,8 @@ You use, distribute and extend Smallfolk_cpp under the terms of the MIT license.
 
 See [ASSUMPTIONS.md](ASSUMPTIONS.md) for documented behavioral assumptions (copy semantics, comparison, limits, and security).
 
+See [CHANGELOG.md](CHANGELOG.md) for release history (current version **2.0.1**).
+
 ## Add to your project
 
 **CMake (recommended)** — add this repository as a subdirectory or fetch it, then link the library target:
@@ -27,7 +29,7 @@ target_link_libraries(my_app PRIVATE smallfolk_cpp::smallfolk)
 Build and test from the repository root:
 
 ```bash
-cmake -B build -DSMALLFOLK_BUIlen()LD_TESTS=ON -DSMALLFOLK_BUILD_BENCHMARK=ON
+cmake -B build -DSMALLFOLK_BUILD_TESTS=ON -DSMALLFOLK_BUILD_BENCHMARK=ON
 cmake --build build
 ctest --test-dir build --output-on-failure   # if you enable CTest
 ./build/smallfolk_tests
@@ -36,7 +38,7 @@ ctest --test-dir build --output-on-failure   # if you enable CTest
 ./build/smallfolk_benchmark
 ```
 
-**Manual integration** — copy `smallfolk.h` and `smallfolk.cpp` into your tree and compile them as a static library or directly into your target. The library requires C++11 and has no other dependencies.
+**Manual integration** — copy `smallfolk.h`, `smallfolk.cpp`, and (optionally) `smallfolk_schema.h`, `smallfolk_schema.cpp`, `smallfolk_convert.h` into your tree and compile them as a static library or directly into your target. The library requires C++11 and has no other dependencies.
 
 **Install** — after building:
 
@@ -137,6 +139,15 @@ Tune limits for your deployment. See [ASSUMPTIONS.md](ASSUMPTIONS.md) for what i
 
 Automated tests live in `tests/test_smallfolk.cpp` and `tests/test_schema.cpp`, run via the `smallfolk_tests` and `smallfolk_schema_tests` targets. The original interactive walkthrough from `main.cpp` now lives in `examples/demo.cpp` as the `smallfolk_demo` target (also run by CTest when `-DSMALLFOLK_BUILD_EXAMPLES=ON`, default). The demo uses a `DEMO_CHECK` macro instead of `assert()` so runtime verification still runs in Release/NDEBUG builds.
 
+Static analysis (Linux CI and local when tools are installed):
+
+```bash
+cmake -B build -DCMAKE_EXPORT_COMPILE_COMMANDS=ON
+cmake --build build --target smallfolk_static_analysis
+```
+
+This runs **cppcheck** and **clang-tidy** on the library sources when available. Optional: `-DSMALLFOLK_ENABLE_CLANG_TIDY=ON` attaches clang-tidy to normal library builds.
+
 The code has also been in use with a server-client C++-Lua communication system called AIO through which the API has been made more usable and critical issues have been addressed.
 
 - [https://github.com/Rochet2/AIO](https://github.com/Rochet2/AIO)
@@ -169,7 +180,9 @@ This function does not throw.
 ### deserializing
 
 Deserializing happens by calling `static LuaVal LuaVal::loads(std::string const & string, std::string* errmsg = nullptr)` or the overload that accepts an explicit `LoadLimits` object. When an error occurs with the deserialization a LuaVal representing a nil is returned and if errmsg points to a string then it is filled with the error message.
-This function does not throw.
+This function does not throw. Use `LuaVal::loads_or_throw(...)` when you prefer exceptions on parse failure.
+
+Serializing also has a throwing overload: `dumps_or_throw()`.
 
 ### LoadLimits
 
@@ -381,6 +394,42 @@ This operator does not throw unless you use it on non table objects or with nil 
 
 `luaval.has(key)` can be used to check if a value can be found in a table.
 This function do not throw unless you use it on non table objects or with nil keys.
+
+#### Safe lookup (no auto-vivification)
+
+Prefer these when you do not want missing keys to create empty tables:
+
+| Method | Missing key | Notes |
+| --- | --- | --- |
+| `try_get(key)` / `find(key)` | returns `nullptr` | safe optional access |
+| `get(key)` | returns `LuaVal::nil` | const reference |
+| `at(key)` | throws | mutable reference when present |
+| `has(key)` | returns `false` | existence check |
+
+Typed reads without exceptions: `try_as_number`, `try_as_string`, `try_as_bool`.
+
+#### Path lookup and nested set/erase
+
+Nested access uses the same tiers as single-key lookup. Paths never auto-vivify on read; `set_path` creates missing intermediate tables.
+
+```C++
+LuaVal doc = LuaVal::loads_or_throw("{stats:{hp:100}}");
+
+if (LuaVal const * hp = doc.try_get_path("stats", "hp"))
+    std::cout << hp->num() << std::endl;
+
+double hp = doc.get_path("stats", "hp").num();          // nil if missing
+double hp2 = doc.at_path("stats", "hp").num();         // throws with $.stats.hp
+
+doc.set_path({ "player", "name" }, std::string("Ada")); // auto-vivify intermediates
+doc.erase_path("stats", "hp");                          // no-op if path missing
+```
+
+Variadic segments (`try_get_path("a", "b", 1)`) and `std::initializer_list<LuaVal>` overloads are both available.
+
+#### `lua_val` factories
+
+`#include "smallfolk_convert.h"` for helpers such as `lua_val::map(...)`, `lua_val::array(...)`, `lua_val::string(...)`, and `lua_val::nil()`.
 
 A method for erasing data with a key is `luaval.rem(key)` which also returns the accessed table.
 This function do not throw unless you use it on non table objects or with nil keys.

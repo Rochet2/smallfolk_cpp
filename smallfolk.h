@@ -75,14 +75,18 @@ public:
     // Thread-safe write of the process-wide default. Prefer passing LoadLimits per call in multi-threaded code.
     static void set_load_limits(LoadLimits limits);
 
+    // Static nil value, same as LuaVal(TNIL). Useful as a default const reference.
+    // Returns the string representation of the value, similar to lua tostring.
     std::string tostring() const;
 
+    // Use as the hasher for containers, for example std::unordered_map<LuaVal, int, LuaVal::LuaValHasher>.
     struct LuaValHasher
     {
         size_t operator()(LuaVal const & v) const;
     };
 
     typedef std::unordered_map<LuaVal, LuaVal> LuaTable;
+    // Circular reference memleak if insert self to self (deep copy on assign avoids sharing).
     typedef std::unique_ptr<LuaTable> TblPtr;
 
     LuaVal(const LuaTypeTag tag) : tag(tag), tbl_ptr(tag == TTABLE ? new LuaTable() : nullptr), d(0), b(false) {}
@@ -149,11 +153,12 @@ public:
     bool isbool() const { return tag == TBOOL; }
     bool isnil() const { return tag == TNIL; }
 
+    // gettable; adds key-nil pair if not existing. nil key throws error.
     // Inserts an empty table when the key is missing.
     LuaVal & operator[](LuaVal const & k);
     LuaVal const & operator[](LuaVal const & k) const;
 
-    // Returns LuaVal::nil when the key is missing (same reference as static nil).
+    // gettable; returns LuaVal::nil when the key is missing (same reference as static nil).
     LuaVal const & get(LuaVal const & k) const;
     LuaVal const & get(std::string const & k) const;
     LuaVal const & get(int k) const;
@@ -174,6 +179,7 @@ public:
     LuaVal & at(int k);
     LuaVal const & at(int k) const;
 
+    // returns true if value was found with key
     bool has(LuaVal const & k) const;
     bool has(std::string const & k) const;
     bool has(int k) const;
@@ -226,6 +232,7 @@ public:
         return erase_path(std::initializer_list<LuaVal>{ LuaVal(keys)... });
     }
 
+    // settable; return self
     LuaVal & set(LuaVal const & k, LuaVal const & v);
     LuaVal & set(LuaVal const & k, LuaVal && v);
     LuaVal & set(std::string const & k, LuaVal const & v);
@@ -244,35 +251,50 @@ public:
     LuaVal & set(double k, LuaVal const & v) { return set(LuaVal(k), v); }
     LuaVal & set(double k, LuaVal && v) { return set(LuaVal(k), std::move(v)); }
 
+    // settable ignore if exists; return self
     LuaVal & setignore(LuaVal const & k, LuaVal const & v);
     LuaVal & setignore(LuaVal const & k, LuaVal && v);
 
+    // erase; return self
     LuaVal & erase(LuaVal const & k);
     LuaVal & rem(LuaVal const & k) { return erase(k); }
 
+    // table array size, not actual element count
     unsigned int len() const;
+    // table.insert; return self
     LuaVal & insert(LuaVal const & v, LuaVal const & pos = nil);
     LuaVal & insert(LuaVal && v, LuaVal const & pos = nil);
     LuaVal & insert(char const * v) { return insert(LuaVal(v)); }
+    // table.remove; return self
     LuaVal & remove(LuaVal const & pos = nil);
 
+    // get a number value
     double num() const;
+    // get a boolean value
     bool boolean() const;
+    // get a string value
     std::string const & str() const;
+    // get a table value
     LuaTable const & tbl() const;
 
     bool try_as_number(double & out) const;
     bool try_as_string(std::string const *& out) const;
     bool try_as_bool(bool & out) const;
 
+    // Returns a typetag, the internal identifier for each type.
     LuaTypeTag typetag() const { return tag; }
+    // Returns the LuaVal's type as a string.
     std::string type() const { return type(typetag()); }
+    // Returns the type tag's type as a string.
     static std::string type(LuaTypeTag tag);
 
+    // Serializes the value into string.
+    // errmsg is optional; on failure an empty string is returned and errmsg is assigned (not appended).
     std::string dumps(std::string* errmsg = nullptr) const;
     std::string dumps_or_throw() const;
 
-    // When errmsg is non-null it is assigned (not appended) on failure.
+    // Deserialize a string into a LuaVal.
+    // errmsg is optional; on failure nil is returned and errmsg is assigned (not appended).
     static LuaVal loads(std::string const & string, std::string* errmsg = nullptr);
     static LuaVal loads(std::string const & string, LoadLimits const & limits, std::string* errmsg = nullptr);
     static LuaVal loads_or_throw(std::string const & string);
@@ -281,6 +303,7 @@ public:
     bool operator==(LuaVal const& rhs) const;
     bool operator!=(LuaVal const& rhs) const { return !(*this == rhs); }
 
+    // You can use !val to check for nil or false.
     explicit operator bool() const;
 
     LuaVal& operator=(LuaVal const& val);
@@ -335,6 +358,7 @@ private:
     LuaTypeTag tag;
     TblPtr tbl_ptr;
     std::string s;
+    // int64_t i; // lua 5.3 support? Numbers are stored as double today.
     double d;
     bool b;
 };
