@@ -7,7 +7,6 @@
 #include <cstdlib> // std::strtod
 #include <cstdio> // std::snprintf
 #include <cstring> // std::strcmp
-#include <limits>
 #include <stdarg.h> // va_start
 #include <functional> // std::hash
 #include <mutex>
@@ -145,41 +144,12 @@ namespace Serializer
 
     inline bool is_nan_value(double value)
     {
-        return std::fpclassify(value) == FP_NAN;
+        return value != value;
     }
 
     inline bool is_inf_value(double value)
     {
-        return std::fpclassify(value) == FP_INFINITE;
-    }
-
-    inline void append_number_token(ACC & acc, double value)
-    {
-        if (std::isfinite(value))
-        {
-            char buf[64];
-            std::snprintf(buf, sizeof(buf), "%.17g", value);
-            acc << buf;
-            return;
-        }
-
-        char buf[64];
-        std::snprintf(buf, sizeof(buf), "%.17g", value);
-        // Match gvx Smallfolk / legacy smallfolk_cpp: libc text -> wire token.
-        if (std::strcmp(buf, "inf") == 0)
-            acc << 'I';
-        else if (std::strcmp(buf, "-inf") == 0)
-            acc << 'i';
-        else if (std::strncmp(buf, "-nan", 4) == 0)
-            acc << 'N';
-        else if (std::strncmp(buf, "nan", 3) == 0)
-            acc << 'Q';
-        else if (is_inf_value(value))
-            acc << (value < 0.0 ? 'i' : 'I');
-        else if (is_nan_value(value))
-            acc << (buf[0] == '-' ? 'N' : 'Q');
-        else
-            acc << 'Q';
+        return !is_nan_value(value) && !std::isfinite(value);
     }
 
     inline std::string tostring(const double d)
@@ -189,6 +159,29 @@ namespace Serializer
         std::snprintf(arr, sizeof(arr), "%.17g", d);
         return arr;
     }
+
+    inline void append_number_token(ACC & acc, double value)
+    {
+        if (is_nan_value(value))
+        {
+            std::string const nn = tostring(value);
+            if (nn.size() >= 4 && nn.compare(0, 4, "-nan") == 0)
+                acc << 'N';
+            else
+                acc << 'Q';
+            return;
+        }
+        if (is_inf_value(value))
+        {
+            acc << (value < 0.0 ? 'i' : 'I');
+            return;
+        }
+
+        char buf[64];
+        std::snprintf(buf, sizeof(buf), "%.17g", value);
+        acc << buf;
+    }
+
     inline std::string tostring(LuaVal::TblPtr const & ptr)
     {
         char arr[128];
@@ -1202,6 +1195,8 @@ LuaVal Serializer::expect_number(std::string const & string, size_t & start, Par
 
 LuaVal Serializer::expect_object(std::string const & string, size_t & i, Serializer::TABLES & tables, ParseContext & ctx)
 {
+    static volatile double zero = 0.0;
+
     char cc = strat(string, i++);
     switch (cc)
     {
@@ -1240,12 +1235,12 @@ LuaVal Serializer::expect_object(std::string const & string, size_t & i, Seriali
             throw smallfolk_exception("non-finite number encoding rejected at %zu", i - 1);
         ctx.on_value_created();
         if (cc == 'Q')
-            return -std::numeric_limits<double>::quiet_NaN();
+            return -(zero / zero);
         if (cc == 'N')
-            return std::numeric_limits<double>::quiet_NaN();
+            return (zero / zero);
         if (cc == 'I')
-            return std::numeric_limits<double>::infinity();
-        return -std::numeric_limits<double>::infinity();
+            return (1.0 / zero);
+        return -(1.0 / zero);
     case '\'':
     case '"':
     {
