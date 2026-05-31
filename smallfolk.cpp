@@ -6,6 +6,7 @@
 #include <cmath> // std::floor, std::isfinite
 #include <cstdlib> // std::strtod
 #include <cstdio> // std::snprintf
+#include <limits>
 #include <stdarg.h> // va_start
 #include <functional> // std::hash
 #include <mutex>
@@ -140,6 +141,11 @@ namespace Serializer
     typedef std::vector<LuaVal> TABLES;
     typedef std::unordered_map<LuaVal, unsigned int, LuaVal::LuaValHasher> MEMO;
     typedef std::stringstream ACC;
+
+    inline bool is_nan_value(double value)
+    {
+        return value != value || std::isnan(value);
+    }
 
     inline std::string tostring(const double d)
     {
@@ -1012,13 +1018,16 @@ unsigned int Serializer::dump_object(LuaVal const & object, unsigned int nmemo, 
         acc << '"';
         break;
     case TNUMBER:
-        if (std::isnan(object.num()))
-            acc << (std::signbit(object.num()) ? 'Q' : 'N'); // Smallfolk non-finite encodings
-        else if (std::isinf(object.num()))
-            acc << (object.num() < 0 ? 'i' : 'I');
+    {
+        double const value = object.num();
+        if (is_nan_value(value))
+            acc << (std::signbit(value) ? 'Q' : 'N'); // Smallfolk non-finite encodings
+        else if (std::isinf(value))
+            acc << (value < 0.0 ? 'i' : 'I');
         else
-            acc << object.num();
+            acc << value;
         break;
+    }
     case TTABLE:
         return dump_type_table(object, nmemo, memo, acc);
     default:
@@ -1166,8 +1175,6 @@ LuaVal Serializer::expect_number(std::string const & string, size_t & start, Par
 
 LuaVal Serializer::expect_object(std::string const & string, size_t & i, Serializer::TABLES & tables, ParseContext & ctx)
 {
-    static double _zero = 0.0;
-
     char cc = strat(string, i++);
     switch (cc)
     {
@@ -1182,8 +1189,22 @@ LuaVal Serializer::expect_object(std::string const & string, size_t & i, Seriali
         ctx.on_value_created();
         return false;
     case 'n':
+    {
+        size_t const start = i - 1;
+        if (strat(string, i) == 'a' && strat(string, i + 1) == 'n')
+        {
+            char * end = nullptr;
+            double const value = std::strtod(string.c_str() + start, &end);
+            if (end != string.c_str() + start && is_nan_value(value))
+            {
+                i = static_cast<size_t>(end - string.c_str());
+                ctx.on_value_created();
+                return value;
+            }
+        }
         ctx.on_value_created();
         return LuaVal::nil;
+    }
     case 'Q':
     case 'N':
     case 'I':
@@ -1192,12 +1213,12 @@ LuaVal Serializer::expect_object(std::string const & string, size_t & i, Seriali
             throw smallfolk_exception("non-finite number encoding rejected at %zu", i - 1);
         ctx.on_value_created();
         if (cc == 'Q')
-            return -(0 / _zero);
+            return -std::numeric_limits<double>::quiet_NaN();
         if (cc == 'N')
-            return (0 / _zero);
+            return std::numeric_limits<double>::quiet_NaN();
         if (cc == 'I')
-            return (1 / _zero);
-        return -(1 / _zero);
+            return std::numeric_limits<double>::infinity();
+        return -std::numeric_limits<double>::infinity();
     case '\'':
     case '"':
     {

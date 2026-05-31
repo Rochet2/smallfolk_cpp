@@ -75,6 +75,8 @@ static void test_non_finite_numbers()
     LuaVal values = { -(zero / zero), (zero / zero), (1.0 / zero), -(1.0 / zero) };
     std::string serialized = values.dumps();
     expect_true(!serialized.empty(), "non-finite values serialize");
+    expect_true(serialized.find("nan") == std::string::npos, "non-finite wire uses N/Q tokens");
+    expect_true(serialized.find("inf") == std::string::npos, "non-finite wire uses I/i tokens");
 
     std::string err;
     LuaVal loaded = LuaVal::loads(serialized, &err);
@@ -619,6 +621,104 @@ static void test_empty_table_round_trip()
     expect_true(loaded.len() == 0, "empty table stays empty");
 }
 
+// Fixed wire payloads in gvx/Smallfolk token form (dump_object / dump_type).
+static void test_lua_smallfolk_interop_wires()
+{
+    std::string err;
+
+    {
+        LuaVal value = LuaVal::loads("t", &err);
+        expect_true(err.empty(), "lua wire scalar true loads");
+        expect_true(value.isbool() && value.boolean(), "lua wire scalar true value");
+    }
+
+    {
+        LuaVal value = LuaVal::loads("f", &err);
+        expect_true(err.empty(), "lua wire scalar false loads");
+        expect_true(value.isbool() && !value.boolean(), "lua wire scalar false value");
+    }
+
+    {
+        LuaVal value = LuaVal::loads("n", &err);
+        expect_true(err.empty(), "lua wire scalar nil loads");
+        expect_true(value.isnil(), "lua wire scalar nil value");
+    }
+
+    {
+        LuaVal value = LuaVal::loads("{t,f,n}", &err);
+        expect_true(err.empty(), "lua wire scalar array loads");
+        expect_true(value.get(1).boolean(), "lua wire array true");
+        expect_true(!value.get(2).boolean(), "lua wire array false");
+        expect_true(value.get(3).isnil(), "lua wire array nil");
+    }
+
+    {
+        LuaVal value = LuaVal::loads("{I,i,N,Q}", &err);
+        expect_true(err.empty(), "lua wire non-finite array loads");
+        expect_true(std::isinf(value.get(1).num()) && value.get(1).num() > 0.0, "lua wire I is +inf");
+        expect_true(std::isinf(value.get(2).num()) && value.get(2).num() < 0.0, "lua wire i is -inf");
+        expect_true(std::isnan(value.get(3).num()), "lua wire N is nan");
+        expect_true(std::isnan(value.get(4).num()), "lua wire Q is nan");
+    }
+
+    {
+        LuaVal value = LuaVal::loads("\"a\"\"b\"", &err);
+        expect_true(err.empty(), "lua wire doubled-quote string loads");
+        expect_equal(value.str(), "a\"b", "lua wire doubled-quote string value");
+    }
+
+    {
+        LuaVal value = LuaVal::loads("{\"Hello\",\"test\":\"world\",67.5:-234.5}", &err);
+        expect_true(err.empty(), "lua wire mixed array/map table loads");
+        expect_equal(value.get(1).str(), "Hello", "lua wire array slot 1");
+        expect_equal(value.get(std::string("test")).str(), "world", "lua wire map key test");
+        expect_true(value.get(LuaVal(67.5)).num() == -234.5, "lua wire numeric map key");
+    }
+
+    {
+        LuaVal value = LuaVal::loads("{1,2,{3,4.5,'ke':'test'}}", &err);
+        expect_true(err.empty(), "lua wire nested compact table loads");
+        expect_true(value.get(1).num() == 1.0, "lua wire nested index 1");
+        expect_true(value.get(2).num() == 2.0, "lua wire nested index 2");
+        expect_true(value.get(3).get(1).num() == 3.0, "lua wire nested child array");
+        expect_true(value.get(3).get(2).num() == 4.5, "lua wire nested child number");
+        expect_equal(value.get(3).get(LuaVal("ke")).str(), "test", "lua wire nested child map key");
+    }
+
+    {
+        char const * benchmark_wire =
+            "{t,\"somestring\",123.456,t,"
+            "{\"t\":-678,\"test\":123.45600128173828,\"f\":268435455,\"subtable\":{1,2,3}}}";
+        LuaVal value = LuaVal::loads(benchmark_wire, &err);
+        expect_true(err.empty(), "lua wire README benchmark payload loads");
+        expect_true(value.get(1).isbool() && value.get(1).boolean(), "benchmark slot 1 bool");
+        expect_equal(value.get(2).str(), "somestring", "benchmark slot 2 string");
+        expect_true(value.get(3).num() == 123.456, "benchmark slot 3 number");
+        expect_true(value.get(5).get(LuaVal("t")).num() == -678.0, "benchmark nested t");
+        expect_true(value.get(5).get(LuaVal("f")).num() == 268435455.0, "benchmark nested f");
+        expect_true(value.get(5).get(LuaVal("subtable")).get(2).num() == 2.0, "benchmark nested subtable");
+    }
+
+    {
+        LuaVal value = LuaVal::loads("{1,\t2}", &err);
+        expect_true(err.empty(), "lua wire tab whitespace loads");
+        expect_true(value.get(2).num() == 2.0, "lua wire tab whitespace value");
+    }
+
+    {
+        LuaVal original = LuaVal::loads("{1,2,{3,4.5,'ke':'test'}}", &err);
+        expect_true(err.empty(), "interop round-trip source loads");
+        std::string dumped = original.dumps(&err);
+        expect_true(err.empty(), "interop round-trip dumps");
+        LuaVal again = LuaVal::loads(dumped, &err);
+        expect_true(err.empty(), "interop round-trip reloads");
+        expect_true(again.get(1).num() == 1.0, "interop round-trip index 1");
+        expect_true(again.get(3).get(LuaVal("ke")).str() == "test", "interop round-trip nested key");
+    }
+
+    expect_load_error("{@1}", LuaVal::default_load_limits(), "lua wire @ reference rejected");
+}
+
 int main()
 {
     std::cout << "Running smallfolk tests..." << std::endl;
@@ -647,6 +747,7 @@ int main()
     test_single_quoted_strings();
     test_path_errors();
     test_empty_table_round_trip();
+    test_lua_smallfolk_interop_wires();
 
     if (failures == 0)
     {
