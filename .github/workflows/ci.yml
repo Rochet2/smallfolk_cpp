@@ -2,16 +2,37 @@ name: C/C++ CI
 
 on:
   push:
+  pull_request:
 
 jobs:
   build:
-    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - os: ubuntu-latest
+            configure: cmake -B build -DSMALLFOLK_BUILD_TESTS=ON -DSMALLFOLK_BUILD_BENCHMARK=ON -DCMAKE_BUILD_TYPE=Release
+            build: cmake --build build --config Release
+            test: ctest --test-dir build -C Release --output-on-failure
+          - os: windows-latest
+            configure: cmake -B build -DSMALLFOLK_BUILD_TESTS=ON -DSMALLFOLK_BUILD_BENCHMARK=ON
+            build: cmake --build build --config Release
+            test: ctest --test-dir build -C Release --output-on-failure
+          - os: macos-latest
+            configure: cmake -B build -DSMALLFOLK_BUILD_TESTS=ON -DSMALLFOLK_BUILD_BENCHMARK=ON -DCMAKE_BUILD_TYPE=Release
+            build: cmake --build build --config Release
+            test: ctest --test-dir build -C Release --output-on-failure
+
+    runs-on: ${{ matrix.os }}
+
     steps:
-    - uses: actions/checkout@v3
-    - name: Build and run
-      run: |
-        mkdir bin
-        cd bin
-        cmake ../
-        make
-        ./smallfolk_cpp
+      - uses: actions/checkout@v6
+
+      - name: Configure
+        run: ${{ matrix.configure }}
+
+      - name: Build
+        run: ${{ matrix.build }}
+
+      - name: Test
+        run: ${{ matrix.test }}
