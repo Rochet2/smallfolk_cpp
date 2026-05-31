@@ -178,6 +178,54 @@ public:
     bool has(std::string const & k) const;
     bool has(int k) const;
 
+    // Read-only nested lookup; never auto-vivifies. Empty path refers to this value.
+    LuaVal const * try_get_path(std::initializer_list<LuaVal> keys) const;
+    LuaVal const & get_path(std::initializer_list<LuaVal> keys) const;
+    LuaVal & at_path(std::initializer_list<LuaVal> keys);
+    LuaVal const & at_path(std::initializer_list<LuaVal> keys) const;
+    bool has_path(std::initializer_list<LuaVal> keys) const;
+
+    template<typename... Keys>
+    LuaVal const * try_get_path(Keys const &... keys) const
+    {
+        return try_get_path(std::initializer_list<LuaVal>{ LuaVal(keys)... });
+    }
+
+    template<typename... Keys>
+    LuaVal const & get_path(Keys const &... keys) const
+    {
+        return get_path(std::initializer_list<LuaVal>{ LuaVal(keys)... });
+    }
+
+    template<typename... Keys>
+    LuaVal & at_path(Keys const &... keys)
+    {
+        return at_path(std::initializer_list<LuaVal>{ LuaVal(keys)... });
+    }
+
+    template<typename... Keys>
+    LuaVal const & at_path(Keys const &... keys) const
+    {
+        return at_path(std::initializer_list<LuaVal>{ LuaVal(keys)... });
+    }
+
+    template<typename... Keys>
+    bool has_path(Keys const &... keys) const
+    {
+        return has_path(std::initializer_list<LuaVal>{ LuaVal(keys)... });
+    }
+
+    // Nested set/erase. set_path auto-vivifies missing intermediate tables; erase_path is a no-op when the path is missing.
+    LuaVal & set_path(std::initializer_list<LuaVal> keys, LuaVal const & v);
+    LuaVal & set_path(std::initializer_list<LuaVal> keys, LuaVal && v);
+    LuaVal & erase_path(std::initializer_list<LuaVal> keys);
+
+    template<typename... Keys>
+    LuaVal & erase_path(Keys const &... keys)
+    {
+        return erase_path(std::initializer_list<LuaVal>{ LuaVal(keys)... });
+    }
+
     LuaVal & set(LuaVal const & k, LuaVal const & v);
     LuaVal & set(LuaVal const & k, LuaVal && v);
     LuaVal & set(std::string const & k, LuaVal const & v);

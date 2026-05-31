@@ -222,7 +222,6 @@ Schema string_enum(std::vector<std::string> values);
 Schema string_enum(std::initializer_list<std::string> values);
 Schema one_of(std::vector<Schema> alternatives);
 Schema one_of(std::initializer_list<Schema> alternatives);
-Schema one_of(Schema const * const * alternatives, size_t count);
 
 } // namespace schema
 

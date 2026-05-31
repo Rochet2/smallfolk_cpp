@@ -1,5 +1,5 @@
 cmake_minimum_required(VERSION 3.16)
-project(smallfolk_cpp VERSION 1.0.0 LANGUAGES CXX)
+project(smallfolk_cpp VERSION 2.0.0 LANGUAGES CXX)
 
 option(SMALLFOLK_BUILD_TESTS "Build the test runner" ON)
 option(SMALLFOLK_BUILD_BENCHMARK "Build the benchmark runner" ON)

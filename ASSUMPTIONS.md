@@ -20,6 +20,7 @@ This document records behavioral assumptions baked into smallfolk_cpp. If you re
 - `set(key, nil)` removes the key; `table[key] = nil` stores an explicit nil entry instead.
 - Table keys stored in a table are themselves deep-copied on insert. You cannot retrieve the same key object later by identity.
 - Move assignment transfers ownership of internal table storage without copying. Move-based `set()` / `insert()` overloads avoid redundant deep copies when you no longer need the source value.
+- **`try_get_path` / `get_path` / `at_path` / `has_path`** traverse nested tables read-only and never auto-vivify. An empty path refers to the root value. `set_path` auto-vivifies missing intermediate tables (like `operator[]`). `erase_path` is a no-op when any segment of the path is missing.
 
 ## Comparison and hashing
 

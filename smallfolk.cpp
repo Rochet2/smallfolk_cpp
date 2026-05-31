@@ -16,6 +16,82 @@ namespace
     LoadLimits g_load_limits;
     std::mutex g_load_limits_mutex;
 
+    std::string path_segment(LuaVal const & key)
+    {
+        if (key.isstring())
+            return std::string(".") + key.str();
+        if (key.isnumber())
+        {
+            char buffer[32];
+            std::snprintf(buffer, sizeof(buffer), "[%u]", static_cast<unsigned>(key.num()));
+            return buffer;
+        }
+        return "[?]";
+    }
+
+    std::string format_path(std::initializer_list<LuaVal> const & keys, size_t segment_count)
+    {
+        std::string path = "$";
+        size_t i = 0;
+        for (LuaVal const & key : keys)
+        {
+            if (i >= segment_count)
+                break;
+            path += path_segment(key);
+            ++i;
+        }
+        return path;
+    }
+
+    void ensure_path_key(LuaVal const & key, char const * api_name)
+    {
+        if (key.isnil())
+            throw smallfolk_exception("using %s with nil key segment", api_name);
+    }
+
+    enum class PathWalkResult
+    {
+        Found,
+        MissingKey,
+        NotTable,
+    };
+
+    PathWalkResult walk_path_read(
+        LuaVal const & root,
+        std::initializer_list<LuaVal> const & keys,
+        LuaVal const ** out,
+        size_t * fail_index,
+        PathWalkResult * fail_reason)
+    {
+        LuaVal const * cur = &root;
+        size_t i = 0;
+        for (LuaVal const & key : keys)
+        {
+            ensure_path_key(key, "path lookup");
+            if (!cur->istable())
+            {
+                if (fail_index)
+                    *fail_index = i;
+                if (fail_reason)
+                    *fail_reason = PathWalkResult::NotTable;
+                return PathWalkResult::NotTable;
+            }
+            LuaVal const * next = cur->try_get(key);
+            if (!next)
+            {
+                if (fail_index)
+                    *fail_index = i;
+                if (fail_reason)
+                    *fail_reason = PathWalkResult::MissingKey;
+                return PathWalkResult::MissingKey;
+            }
+            cur = next;
+            ++i;
+        }
+        *out = cur;
+        return PathWalkResult::Found;
+    }
+
     LoadLimits read_load_limits()
     {
         std::lock_guard<std::mutex> lock(g_load_limits_mutex);
@@ -345,6 +421,159 @@ bool LuaVal::has(std::string const & k) const
 bool LuaVal::has(int k) const
 {
     return has(LuaVal(k));
+}
+
+LuaVal const * LuaVal::try_get_path(std::initializer_list<LuaVal> keys) const
+{
+    if (keys.size() == 0)
+        return this;
+    if (!istable())
+        throw smallfolk_exception("using try_get_path on non table object");
+    LuaVal const * found = nullptr;
+    PathWalkResult const result = walk_path_read(*this, keys, &found, nullptr, nullptr);
+    if (result == PathWalkResult::Found)
+        return found;
+    return nullptr;
+}
+
+LuaVal const & LuaVal::get_path(std::initializer_list<LuaVal> keys) const
+{
+    if (keys.size() == 0)
+        return *this;
+    LuaVal const * found = try_get_path(keys);
+    if (found)
+        return *found;
+    return nil;
+}
+
+LuaVal & LuaVal::at_path(std::initializer_list<LuaVal> keys)
+{
+    if (keys.size() == 0)
+        return *this;
+    if (!istable())
+        throw smallfolk_exception("using at_path on non table object");
+    LuaVal const * found = nullptr;
+    size_t fail_index = 0;
+    PathWalkResult fail_reason = PathWalkResult::MissingKey;
+    PathWalkResult const result = walk_path_read(*this, keys, &found, &fail_index, &fail_reason);
+    if (result == PathWalkResult::Found)
+        return const_cast<LuaVal &>(*found);
+    if (fail_reason == PathWalkResult::NotTable)
+        throw smallfolk_exception("at_path: not a table at %s", format_path(keys, fail_index).c_str());
+    throw smallfolk_exception("at_path: key not found at %s", format_path(keys, fail_index + 1).c_str());
+}
+
+LuaVal const & LuaVal::at_path(std::initializer_list<LuaVal> keys) const
+{
+    if (keys.size() == 0)
+        return *this;
+    if (!istable())
+        throw smallfolk_exception("using at_path on non table object");
+    LuaVal const * found = nullptr;
+    size_t fail_index = 0;
+    PathWalkResult fail_reason = PathWalkResult::MissingKey;
+    PathWalkResult const result = walk_path_read(*this, keys, &found, &fail_index, &fail_reason);
+    if (result == PathWalkResult::Found)
+        return *found;
+    if (fail_reason == PathWalkResult::NotTable)
+        throw smallfolk_exception("at_path: not a table at %s", format_path(keys, fail_index).c_str());
+    throw smallfolk_exception("at_path: key not found at %s", format_path(keys, fail_index + 1).c_str());
+}
+
+bool LuaVal::has_path(std::initializer_list<LuaVal> keys) const
+{
+    if (keys.size() == 0)
+        return true;
+    if (!istable())
+        throw smallfolk_exception("using has_path on non table object");
+    LuaVal const * found = nullptr;
+    size_t fail_index = 0;
+    PathWalkResult fail_reason = PathWalkResult::MissingKey;
+    PathWalkResult const result = walk_path_read(*this, keys, &found, &fail_index, &fail_reason);
+    (void)fail_index;
+    (void)fail_reason;
+    return result == PathWalkResult::Found;
+}
+
+LuaVal & LuaVal::set_path(std::initializer_list<LuaVal> keys, LuaVal const & v)
+{
+    if (keys.size() == 0)
+        throw smallfolk_exception("using set_path with empty path");
+    if (!istable())
+        throw smallfolk_exception("using set_path on non table object");
+
+    LuaVal * cur = this;
+    auto it = keys.begin();
+    auto const end = keys.end();
+    LuaVal const * last = end - 1;
+    size_t index = 0;
+
+    for (; it != last; ++it, ++index)
+    {
+        ensure_path_key(*it, "set_path");
+        if (!cur->istable())
+            throw smallfolk_exception("set_path: not a table at %s", format_path(keys, index).c_str());
+        cur = &(*cur)[*it];
+    }
+
+    ensure_path_key(*last, "set_path");
+    return cur->set(*last, v);
+}
+
+LuaVal & LuaVal::set_path(std::initializer_list<LuaVal> keys, LuaVal && v)
+{
+    if (keys.size() == 0)
+        throw smallfolk_exception("using set_path with empty path");
+    if (!istable())
+        throw smallfolk_exception("using set_path on non table object");
+
+    LuaVal * cur = this;
+    auto it = keys.begin();
+    auto const end = keys.end();
+    LuaVal const * last = end - 1;
+    size_t index = 0;
+
+    for (; it != last; ++it, ++index)
+    {
+        ensure_path_key(*it, "set_path");
+        if (!cur->istable())
+            throw smallfolk_exception("set_path: not a table at %s", format_path(keys, index).c_str());
+        cur = &(*cur)[*it];
+    }
+
+    ensure_path_key(*last, "set_path");
+    return cur->set(*last, std::move(v));
+}
+
+LuaVal & LuaVal::erase_path(std::initializer_list<LuaVal> keys)
+{
+    if (keys.size() == 0)
+        throw smallfolk_exception("using erase_path with empty path");
+    if (!istable())
+        throw smallfolk_exception("using erase_path on non table object");
+
+    if (keys.size() == 1)
+        return erase(*keys.begin());
+
+    LuaVal * cur = this;
+    auto it = keys.begin();
+    auto const end = keys.end();
+    LuaVal const * last = end - 1;
+
+    for (; it != last; ++it)
+    {
+        ensure_path_key(*it, "erase_path");
+        if (!cur->istable())
+            return *this;
+        LuaVal const * next = cur->try_get(*it);
+        if (!next)
+            return *this;
+        cur = const_cast<LuaVal *>(next);
+    }
+
+    if (!cur->istable())
+        return *this;
+    return cur->erase(*last);
 }
 
 LuaVal & LuaVal::set(LuaVal const & k, LuaVal const & v)

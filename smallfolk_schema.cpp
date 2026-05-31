@@ -793,16 +793,4 @@ Schema one_of(std::initializer_list<Schema> alternatives)
     return one_of(std::vector<Schema>(alternatives));
 }
 
-Schema one_of(Schema const * const * alternatives, size_t count)
-{
-    std::vector<Schema> owned;
-    owned.reserve(count);
-    for (size_t i = 0; i < count; ++i)
-    {
-        if (alternatives[i])
-            owned.push_back(*alternatives[i]);
-    }
-    return one_of(std::move(owned));
-}
-
 } // namespace schema

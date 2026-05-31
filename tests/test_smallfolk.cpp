@@ -377,6 +377,82 @@ static void test_new_api()
     expect_equal(payload.dumps_or_throw(), "\"test\"", "dumps_or_throw");
 }
 
+static void test_path_api()
+{
+    LuaVal root = LuaVal::table();
+    root.set(std::string("stats"), lua_val::map({ { LuaVal("hp"), 100 }, { LuaVal("mp"), 50 } }));
+    root.set(1, std::string("first"));
+
+    expect_true(root.try_get_path() == &root, "empty path returns root");
+    expect_true(root.get_path().istable(), "get_path empty returns root");
+
+    LuaVal const * hp = root.try_get_path(std::string("stats"), std::string("hp"));
+    expect_true(hp != nullptr, "try_get_path finds nested string key");
+    expect_true(hp->num() == 100.0, "try_get_path nested value");
+
+    expect_true(root.try_get_path(std::string("stats"), std::string("missing")) == nullptr, "try_get_path missing leaf");
+    expect_true(root.try_get_path(std::string("missing"), std::string("hp")) == nullptr, "try_get_path missing parent");
+    expect_true(root.try_get_path(1)->str() == "first", "try_get_path int segment");
+
+    expect_true(root.get_path(std::string("stats"), std::string("hp")).num() == 100.0, "get_path nested value");
+    expect_true(root.get_path(std::string("stats"), std::string("missing")).isnil(), "get_path missing returns nil");
+
+    expect_true(root.has_path(std::string("stats"), std::string("hp")), "has_path existing path");
+    expect_true(!root.has_path(std::string("stats"), std::string("missing")), "has_path missing leaf");
+    expect_true(!root.has_path(std::string("missing"), std::string("hp")), "has_path missing parent");
+
+    expect_true(root.at_path(std::string("stats"), std::string("hp")).num() == 100.0, "at_path nested value");
+    root.at_path(std::string("stats"), std::string("hp")) = 120;
+    expect_true(root.get_path(std::string("stats"), std::string("hp")).num() == 120.0, "at_path mutable reference");
+
+    try
+    {
+        root.at_path(std::string("stats"), std::string("missing"));
+        expect_true(false, "at_path should throw for missing key");
+    }
+    catch (smallfolk_exception const & e)
+    {
+        expect_true(std::string(e.what()).find("$.stats.missing") != std::string::npos, "at_path missing key path");
+    }
+
+    root.set(std::string("scalar"), 42);
+    try
+    {
+        root.at_path(std::string("scalar"), std::string("x"));
+        expect_true(false, "at_path should throw when traversing non-table");
+    }
+    catch (smallfolk_exception const & e)
+    {
+        expect_true(std::string(e.what()).find("not a table at $.scalar") != std::string::npos, "at_path non-table path");
+    }
+
+    LuaVal fresh = LuaVal::table();
+    fresh.set_path({ LuaVal("player"), LuaVal("name") }, std::string("Ada"));
+    expect_true(fresh.has_path(std::string("player"), std::string("name")), "set_path creates intermediate tables");
+    expect_true(fresh.get_path(std::string("player"), std::string("name")).str() == "Ada", "set_path nested value");
+
+    fresh.set_path({ LuaVal("player"), LuaVal("stats"), LuaVal("hp") }, 88);
+    expect_true(fresh.get_path(std::string("player"), std::string("stats"), std::string("hp")).num() == 88.0, "set_path deep path");
+
+    expect_true(fresh.has_path(std::string("player"), std::string("stats"), std::string("hp")), "set_path deep has_path");
+    fresh.erase_path(std::string("player"), std::string("stats"), std::string("hp"));
+    expect_true(!fresh.has_path(std::string("player"), std::string("stats"), std::string("hp")), "erase_path removes nested key");
+    expect_true(fresh.has_path(std::string("player"), std::string("stats")), "erase_path keeps parent table");
+
+    fresh.erase_path(std::string("player"), std::string("missing"));
+    expect_true(fresh.has_path(std::string("player"), std::string("name")), "erase_path missing path is no-op");
+
+    try
+    {
+        LuaVal number = 5;
+        number.has_path(std::string("x"));
+        expect_true(false, "has_path should throw on non-table root");
+    }
+    catch (smallfolk_exception const &)
+    {
+    }
+}
+
 static void test_equality_and_bool()
 {
     LuaVal five = 5;
@@ -412,6 +488,7 @@ int main()
     test_len_edge_cases();
     test_number_parse_edge_cases();
     test_new_api();
+    test_path_api();
     test_equality_and_bool();
 
     if (failures == 0)
