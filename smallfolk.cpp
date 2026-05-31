@@ -155,25 +155,31 @@ namespace Serializer
 
     inline void append_number_token(ACC & acc, double value)
     {
-        if (is_nan_value(value))
+        if (std::isfinite(value))
         {
-            acc << (std::signbit(value) ? 'Q' : 'N');
-            return;
-        }
-        if (is_inf_value(value))
-        {
-            acc << (value < 0.0 ? 'i' : 'I');
+            char buf[64];
+            std::snprintf(buf, sizeof(buf), "%.17g", value);
+            acc << buf;
             return;
         }
 
         char buf[64];
         std::snprintf(buf, sizeof(buf), "%.17g", value);
-        if (std::strcmp(buf, "nan") == 0 || std::strcmp(buf, "-nan") == 0)
-            acc << (buf[0] == '-' ? 'Q' : 'N');
-        else if (std::strcmp(buf, "inf") == 0 || std::strcmp(buf, "-inf") == 0)
-            acc << (buf[0] == '-' ? 'i' : 'I');
+        // Match gvx Smallfolk / legacy smallfolk_cpp: libc text -> wire token.
+        if (std::strcmp(buf, "inf") == 0)
+            acc << 'I';
+        else if (std::strcmp(buf, "-inf") == 0)
+            acc << 'i';
+        else if (std::strncmp(buf, "-nan", 4) == 0)
+            acc << 'N';
+        else if (std::strncmp(buf, "nan", 3) == 0)
+            acc << 'Q';
+        else if (is_inf_value(value))
+            acc << (value < 0.0 ? 'i' : 'I');
+        else if (is_nan_value(value))
+            acc << (buf[0] == '-' ? 'N' : 'Q');
         else
-            acc << buf;
+            acc << 'Q';
     }
 
     inline std::string tostring(const double d)
