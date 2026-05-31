@@ -2,9 +2,52 @@
 #include <map>
 #include <iomanip> // std::setprecision
 #include <sstream> // std::stringstream
-#include <cmath> // std::floor
+#include <cmath> // std::floor, std::isfinite
+#include <cstdlib> // std::strtod
+#include <cstdio> // std::snprintf
 #include <stdarg.h> // va_start
 #include <functional> // std::hash
+
+namespace
+{
+    LoadLimits g_load_limits;
+
+    struct ParseContext
+    {
+        LoadLimits const & limits;
+        size_t value_count;
+        unsigned depth;
+
+        void on_value_created()
+        {
+            ++value_count;
+            if (value_count > limits.max_value_count)
+                throw smallfolk_exception(
+                    "load limit exceeded: max value count %zu",
+                    limits.max_value_count);
+        }
+
+        struct DepthGuard
+        {
+            ParseContext & ctx;
+            explicit DepthGuard(ParseContext & c) : ctx(c)
+            {
+                ++ctx.depth;
+                if (ctx.depth > ctx.limits.max_nesting_depth)
+                    throw smallfolk_exception(
+                        "load limit exceeded: max nesting depth %u",
+                        ctx.limits.max_nesting_depth);
+            }
+            ~DepthGuard() { --ctx.depth; }
+        };
+    };
+
+    void skip_whitespace(std::string const & string, size_t & i)
+    {
+        while (i < string.length() && (string[i] == ' ' || string[i] == '\t'))
+            ++i;
+    }
+}
 
 namespace Serializer
 {
@@ -12,17 +55,16 @@ namespace Serializer
     typedef std::unordered_map<LuaVal, unsigned int, LuaVal::LuaValHasher> MEMO;
     typedef std::stringstream ACC;
 
-    // sprintf is ~50% faster than other solutions
     inline std::string tostring(const double d)
     {
         char arr[128];
-        sprintf(arr, "%.17g", d);
+        std::snprintf(arr, sizeof(arr), "%.17g", d);
         return arr;
     }
     inline std::string tostring(LuaVal::TblPtr const & ptr)
     {
         char arr[128];
-        sprintf(arr, "table: %p", static_cast<void*>(ptr.get()));
+        std::snprintf(arr, sizeof(arr), "table: %p", static_cast<void*>(ptr.get()));
         return arr;
     }
 
@@ -33,8 +75,24 @@ namespace Serializer
     bool nonzero_digit(char c);
     bool is_digit(char c);
     char strat(std::string const & string, std::string::size_type i);
-    LuaVal expect_number(std::string const & string, size_t& start);
-    LuaVal expect_object(std::string const & string, size_t& i, TABLES& tables);
+    LuaVal expect_number(std::string const & string, size_t& start, ParseContext & ctx);
+    LuaVal expect_object(std::string const & string, size_t& i, TABLES& tables, ParseContext & ctx);
+}
+
+LoadLimits const & LuaVal::default_load_limits()
+{
+    static LoadLimits const defaults;
+    return defaults;
+}
+
+LoadLimits LuaVal::get_load_limits()
+{
+    return g_load_limits;
+}
+
+void LuaVal::set_load_limits(LoadLimits limits)
+{
+    g_load_limits = limits;
 }
 
 LuaVal const LuaVal::nil(TNIL);
@@ -129,10 +187,24 @@ LuaVal & LuaVal::set(LuaVal const & k, LuaVal const & v)
     if (k.isnil())
         throw smallfolk_exception("using set with nil key");
     LuaTable & tbl = (*tbl_ptr);
-    if (v.isnil()) // on nil value erase key
+    if (v.isnil())
         tbl.erase(k);
     else
-        tbl[k] = v; // normally set pair
+        tbl[k] = v;
+    return *this;
+}
+
+LuaVal & LuaVal::set(LuaVal const & k, LuaVal && v)
+{
+    if (!istable())
+        throw smallfolk_exception("using set on non table object");
+    if (k.isnil())
+        throw smallfolk_exception("using set with nil key");
+    LuaTable & tbl = (*tbl_ptr);
+    if (v.isnil())
+        tbl.erase(k);
+    else
+        tbl[k] = std::move(v);
     return *this;
 }
 
@@ -149,12 +221,25 @@ LuaVal & LuaVal::setignore(LuaVal const & k, LuaVal const & v)
     return *this;
 }
 
+LuaVal & LuaVal::setignore(LuaVal const & k, LuaVal && v)
+{
+    if (!istable())
+        throw smallfolk_exception("using setignore on non table object");
+    if (k.isnil())
+        throw smallfolk_exception("using setignore with nil key");
+    if (v.isnil())
+        return *this;
+    LuaTable & tbl = (*tbl_ptr);
+    tbl.emplace(k, std::move(v));
+    return *this;
+}
+
 LuaVal & LuaVal::rem(LuaVal const & k)
 {
     if (!istable())
         throw smallfolk_exception("using rem on non table object");
     if (k.isnil())
-        throw smallfolk_exception("using set with nil key");
+        throw smallfolk_exception("using rem with nil key");
     LuaTable & tbl = (*tbl_ptr);
     tbl.erase(k);
     return *this;
@@ -200,6 +285,34 @@ LuaVal & LuaVal::insert(LuaVal const & v, LuaVal const & pos)
         tbl.erase(val);
     else
         tbl[val] = v;
+    return *this;
+}
+
+LuaVal & LuaVal::insert(LuaVal && v, LuaVal const & pos)
+{
+    if (!istable())
+        throw smallfolk_exception("using insert on non table object");
+    LuaTable & tbl = (*tbl_ptr);
+    if (pos.isnil())
+    {
+        if (!v.isnil())
+            tbl[len() + 1] = std::move(v);
+        return *this;
+    }
+    if (!pos.isnumber())
+        throw smallfolk_exception("using insert with non number pos");
+    if (std::floor(pos.num()) != pos.num())
+        throw smallfolk_exception("using insert with invalid number key");
+    unsigned int max = len() + 1;
+    unsigned int val = static_cast<unsigned int>(pos.num());
+    if (val <= 0 || val > max)
+        throw smallfolk_exception("using insert with out of bounds key");
+    for (unsigned int i = max; i > val; --i)
+        tbl[i] = std::move(tbl[i - 1]);
+    if (v.isnil())
+        tbl.erase(val);
+    else
+        tbl[val] = std::move(v);
     return *this;
 }
 
@@ -251,7 +364,7 @@ std::string LuaVal::dumps(std::string * errmsg) const
     try
     {
         Serializer::ACC acc;
-        acc << std::setprecision(17); // min lua percision
+        acc << std::setprecision(17); // min lua precision
         unsigned int nmemo = 0;
         Serializer::MEMO memo;
         Serializer::dump_object(*this, nmemo, memo, acc);
@@ -267,11 +380,26 @@ std::string LuaVal::dumps(std::string * errmsg) const
 
 LuaVal LuaVal::loads(std::string const & string, std::string * errmsg)
 {
+    return loads(string, g_load_limits, errmsg);
+}
+
+LuaVal LuaVal::loads(std::string const & string, LoadLimits const & limits, std::string * errmsg)
+{
     try
     {
+        if (string.length() > limits.max_input_size)
+            throw smallfolk_exception(
+                "load limit exceeded: max input size %zu",
+                limits.max_input_size);
+
         Serializer::TABLES tables;
+        ParseContext ctx{ limits, 0, 0 };
         size_t i = 0;
-        return Serializer::expect_object(string, i, tables);
+        LuaVal result = Serializer::expect_object(string, i, tables, ctx);
+        skip_whitespace(string, i);
+        if (limits.require_consumed_input && i != string.length())
+            throw smallfolk_exception("unexpected trailing input at position %zu", i);
+        return result;
     }
     catch (smallfolk_exception const & e)
     {
@@ -324,16 +452,8 @@ unsigned int Serializer::dump_type_table(LuaVal const & object, unsigned int nme
     if (!object.istable())
         throw smallfolk_exception("using dump_type_table on non table object");
 
-    /*
-    auto it = memo.find(object);
-    if (it != memo.end())
-    {
-    acc << '@' << it->second;
-    return nmemo;
-    }
-    memo[object] = ++nmemo;
-    */
     acc << '{';
+    bool first = true;
     std::map<unsigned int, const LuaVal*> arr;
     std::unordered_map<const LuaVal*, const LuaVal*> hash;
     for (auto&& v : object.tbl())
@@ -346,6 +466,9 @@ unsigned int Serializer::dump_type_table(LuaVal const & object, unsigned int nme
     unsigned int i = 1;
     for (auto&& v : arr)
     {
+        if (!first)
+            acc << ',';
+        first = false;
         if (v.first != i)
         {
             nmemo = dump_object(v.first, nmemo, memo, acc);
@@ -354,24 +477,15 @@ unsigned int Serializer::dump_type_table(LuaVal const & object, unsigned int nme
         else
             ++i;
         nmemo = dump_object(*v.second, nmemo, memo, acc);
-        acc << ',';
     }
     for (auto&& v : hash)
     {
+        if (!first)
+            acc << ',';
+        first = false;
         nmemo = dump_object(*v.first, nmemo, memo, acc);
         acc << ':';
         nmemo = dump_object(*v.second, nmemo, memo, acc);
-        acc << ',';
-    }
-    std::string l = acc.str();
-    char c = strat(l, l.length() - 1);
-    if (c != '{')
-    {
-        // remove last char
-        l.pop_back();
-        acc.clear();
-        acc.str(std::string());
-        acc << l;
     }
     acc << '}';
     return nmemo;
@@ -389,13 +503,12 @@ unsigned int Serializer::dump_object(LuaVal const & object, unsigned int nmemo, 
         break;
     case TSTRING:
         acc << '"';
-        acc << escape_quotes(object.str(), '"'); // change to std::quote() in c++14?
+        acc << escape_quotes(object.str(), '"');
         acc << '"';
         break;
     case TNUMBER:
         if (!std::isfinite(object.num()))
         {
-            // slightly ugly :(
             std::string nn = tostring(object.num());
             if (nn == "inf")
                 acc << 'I';
@@ -413,10 +526,8 @@ unsigned int Serializer::dump_object(LuaVal const & object, unsigned int nmemo, 
         break;
     case TTABLE:
         return dump_type_table(object, nmemo, memo, acc);
-        break;
     default:
         throw smallfolk_exception("dump_object invalid or unhandled tag %i", object.typetag());
-        break;
     }
     return nmemo;
 }
@@ -429,7 +540,7 @@ std::string Serializer::escape_quotes(const std::string & before, char quote)
     for (std::string::size_type i = 0; i < before.length(); ++i)
     {
         if (before[i] == quote)
-            after += quote; // no break
+            after += quote;
         else
             after += before[i];
     }
@@ -498,10 +609,10 @@ char Serializer::strat(std::string const & string, std::string::size_type i)
     if (i != std::string::npos &&
         i < string.length())
         return string.at(i);
-    return '\0'; // bad?
+    return '\0';
 }
 
-LuaVal Serializer::expect_number(std::string const & string, size_t & start)
+LuaVal Serializer::expect_number(std::string const & string, size_t & start, ParseContext & ctx)
 {
     size_t i = start;
     char head = strat(string, i);
@@ -517,7 +628,7 @@ LuaVal Serializer::expect_number(std::string const & string, size_t & start)
     else if (head == '0')
         head = strat(string, ++i);
     else
-        throw smallfolk_exception("expect_number at %u unexpected character %c", i, head);
+        throw smallfolk_exception("expect_number at %zu unexpected character %c", i, head);
     if (head == '.')
     {
         size_t oldi = i;
@@ -526,7 +637,7 @@ LuaVal Serializer::expect_number(std::string const & string, size_t & start)
             head = strat(string, ++i);
         } while (is_digit(head));
         if (i == oldi + 1)
-            throw smallfolk_exception("expect_number at %u no numbers after decimal", i);
+            throw smallfolk_exception("expect_number at %zu no numbers after decimal", i);
     }
     if (head == 'e' || head == 'E')
     {
@@ -534,7 +645,7 @@ LuaVal Serializer::expect_number(std::string const & string, size_t & start)
         if (head == '+' || head == '-')
             head = strat(string, ++i);
         if (!is_digit(head))
-            throw smallfolk_exception("expect_number at %u not a digit part %c", i, head);
+            throw smallfolk_exception("expect_number at %zu not a digit part %c", i, head);
         do
         {
             head = strat(string, ++i);
@@ -542,10 +653,15 @@ LuaVal Serializer::expect_number(std::string const & string, size_t & start)
     }
     size_t temp = start;
     start = i;
-    return std::atof(string.substr(temp, i).c_str());
+    char * end = nullptr;
+    double value = std::strtod(string.c_str() + temp, &end);
+    if (end != string.c_str() + i)
+        throw smallfolk_exception("expect_number at %zu failed to parse number", temp);
+    ctx.on_value_created();
+    return value;
 }
 
-LuaVal Serializer::expect_object(std::string const & string, size_t & i, Serializer::TABLES & tables)
+LuaVal Serializer::expect_object(std::string const & string, size_t & i, Serializer::TABLES & tables, ParseContext & ctx)
 {
     static double _zero = 0.0;
 
@@ -554,21 +670,27 @@ LuaVal Serializer::expect_object(std::string const & string, size_t & i, Seriali
     {
     case ' ':
     case '\t':
-        // skip whitespace
-        return expect_object(string, i, tables);
+        return expect_object(string, i, tables, ctx);
     case 't':
+        ctx.on_value_created();
         return true;
     case 'f':
+        ctx.on_value_created();
         return false;
     case 'n':
+        ctx.on_value_created();
         return LuaVal::nil;
     case 'Q':
+        ctx.on_value_created();
         return -(0 / _zero);
     case 'N':
+        ctx.on_value_created();
         return (0 / _zero);
     case 'I':
+        ctx.on_value_created();
         return (1 / _zero);
     case 'i':
+        ctx.on_value_created();
         return -(1 / _zero);
     case '\'':
     case '"':
@@ -579,13 +701,21 @@ LuaVal Serializer::expect_object(std::string const & string, size_t & i, Seriali
             nexti = string.find(cc, nexti + 1);
             if (nexti == std::string::npos)
             {
-                throw smallfolk_exception("expect_object at %u was %c eof before string ends", i, cc);
+                throw smallfolk_exception("expect_object at %zu was %c eof before string ends", i, cc);
             }
             ++nexti;
         } while (strat(string, nexti) == cc);
         size_t temp = i;
+        size_t content_length = nexti - temp - 1;
+        if (content_length > ctx.limits.max_string_length)
+        {
+            throw smallfolk_exception(
+                "load limit exceeded: max string length %zu",
+                ctx.limits.max_string_length);
+        }
         i = nexti;
-        return unescape_quotes(string.substr(temp, nexti - temp - 1), cc);
+        ctx.on_value_created();
+        return unescape_quotes(string.substr(temp, content_length), cc);
     }
     case '0':
     case '1':
@@ -599,10 +729,12 @@ LuaVal Serializer::expect_object(std::string const & string, size_t & i, Seriali
     case '9':
     case '-':
     case '.':
-        return expect_number(string, --i);
+        return expect_number(string, --i, ctx);
     case '{':
     {
+        ParseContext::DepthGuard depth_guard(ctx);
         LuaVal nt(TTABLE);
+        ctx.on_value_created();
         unsigned int j = 1;
         tables.push_back(nt);
         if (strat(string, i) == '}')
@@ -612,13 +744,13 @@ LuaVal Serializer::expect_object(std::string const & string, size_t & i, Seriali
         }
         while (true)
         {
-            LuaVal k = expect_object(string, i, tables);
+            LuaVal k = expect_object(string, i, tables, ctx);
             char at = strat(string, i);
             while (at == ' ')
                 at = strat(string, ++i);
             if (at == ':')
             {
-                nt.set(k, expect_object(string, ++i, tables));
+                nt.set(k, expect_object(string, ++i, tables, ctx));
             }
             else
             {
@@ -637,52 +769,26 @@ LuaVal Serializer::expect_object(std::string const & string, size_t & i, Seriali
             }
             else
             {
-                throw smallfolk_exception("expect_object at %u was %c unexpected character %c", i, cc, head);
+                throw smallfolk_exception("expect_object at %zu was %c unexpected character %c", i, cc, head);
             }
         }
-        break;
     }
-    /*
-    case '@':
-    {
-    std::string::size_type x = i;
-    for (; x < string.length(); ++x)
-    {
-    if (!isdigit(string[x]))
-    break;
-    }
-    std::string substr = string.substr(i, x - i);
-    size_t index = std::stoul(substr.c_str());
-    if (index >= 1 && index <= tables.size())
-    {
-    i += substr.length();
-    return tables[index - 1];
-    }
-
-    throw smallfolk_exception("expect_object at %u was %c invalid index %u", i, cc, index);
-    break;
-    }
-    */
     default:
-    {
-        throw smallfolk_exception("expect_object at %u was %c", i, cc);
-        break;
+        throw smallfolk_exception("expect_object at %zu was %c", i, cc);
     }
-    }
-    return LuaVal::nil;
 }
 
 smallfolk_exception::smallfolk_exception(const char * format, ...) : std::logic_error("Smallfolk exception")
 {
-    char buffer[size];
+    char buffer[buffer_size];
     va_list args;
     va_start(args, format);
-    vsnprintf(buffer, size, format, args);
-    errmsg = std::string("Smallfolk: ") + buffer;
+    std::vsnprintf(buffer, buffer_size, format, args);
     va_end(args);
+    errmsg = std::string("Smallfolk: ") + buffer;
 }
 
-const char * smallfolk_exception::what() const throw()
+const char * smallfolk_exception::what() const noexcept
 {
     return errmsg.c_str();
 }

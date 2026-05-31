@@ -13,15 +13,16 @@
 #include <memory> // std::unique_ptr
 #include <stdexcept> // std::logic_error
 #include <cstddef> // size_t
+#include <cstdint> // int64_t
 #include <utility> // std::move
 
 class smallfolk_exception : public std::logic_error
 {
 public:
-    static size_t const size = 2048;
+    static size_t const buffer_size = 2048;
 
     smallfolk_exception(const char * format, ...);
-    virtual const char* what() const throw();
+    const char* what() const noexcept override;
 
     std::string errmsg;
 };
@@ -33,6 +34,15 @@ enum LuaTypeTag
     TNUMBER,
     TTABLE,
     TBOOL,
+};
+
+struct LoadLimits
+{
+    size_t max_input_size = 16 * 1024 * 1024;
+    size_t max_string_length = 1024 * 1024;
+    unsigned max_nesting_depth = 256;
+    size_t max_value_count = 100000;
+    bool require_consumed_input = true;
 };
 
 class LuaVal;
@@ -57,6 +67,10 @@ public:
     // You can use it as for example as default const reference
     static LuaVal const nil;
 
+    static LoadLimits const & default_load_limits();
+    static LoadLimits get_load_limits();
+    static void set_load_limits(LoadLimits limits);
+
     // returns the string representation of the value info similar to lua tostring
     std::string tostring() const;
 
@@ -73,6 +87,8 @@ public:
     LuaVal() : tag(TTABLE), tbl_ptr(new LuaTable()), d(0), b(false) {}
     LuaVal(const int d) : tag(TNUMBER), tbl_ptr(nullptr), d(d), b(false) {}
     LuaVal(const unsigned int d) : tag(TNUMBER), tbl_ptr(nullptr), d(d), b(false) {}
+    LuaVal(const int64_t d) : tag(TNUMBER), tbl_ptr(nullptr), d(static_cast<double>(d)), b(false) {}
+    LuaVal(const float d) : tag(TNUMBER), tbl_ptr(nullptr), d(d), b(false) {}
     LuaVal(const double d) : tag(TNUMBER), tbl_ptr(nullptr), d(d), b(false) {}
     LuaVal(const std::string & s) : tag(TSTRING), tbl_ptr(nullptr), s(s), d(0), b(false) {}
     LuaVal(const char * s) : tag(TSTRING), tbl_ptr(nullptr), s(s), d(0), b(false) {}
@@ -180,16 +196,19 @@ public:
     LuaVal const & get(LuaVal const & k) const;
     // returns true if value was found with key
     bool has(LuaVal const & k) const;
-    // settable, return self
+    // settable, return self; values are deep-copied unless moved in via rvalue overload
     LuaVal & set(LuaVal const & k, LuaVal const & v);
+    LuaVal & set(LuaVal const & k, LuaVal && v);
     // settable ignore if exists, return self
     LuaVal & setignore(LuaVal const & k, LuaVal const & v);
+    LuaVal & setignore(LuaVal const & k, LuaVal && v);
     // erase, return self
     LuaVal & rem(LuaVal const & k);
     // table array size, not actual element count
     unsigned int len() const;
     // table.insert, return self
     LuaVal & insert(LuaVal const & v, LuaVal const & pos = nil);
+    LuaVal & insert(LuaVal && v, LuaVal const & pos = nil);
     // table.remove, return self
     LuaVal & remove(LuaVal const & pos = nil);
 
@@ -234,10 +253,10 @@ public:
     // returns empty string on error
     std::string dumps(std::string* errmsg = nullptr) const;
 
-    // deserialize a string into a LuaVal
-    // string param is deserialized string
+    // deserialize a string into a LuaVal using the active load limits
     // errmsg is optional value to output error message to on failure
     static LuaVal loads(std::string const & string, std::string* errmsg = nullptr);
+    static LuaVal loads(std::string const & string, LoadLimits const & limits, std::string* errmsg = nullptr);
 
     bool operator==(LuaVal const& rhs) const;
     bool operator!=(LuaVal const& rhs) const { return !(*this == rhs); }
@@ -289,7 +308,6 @@ private:
     LuaTypeTag tag;
     TblPtr tbl_ptr;
     std::string s;
-    // int64_t i; // lua 5.3 support?
     double d;
     bool b;
 };
