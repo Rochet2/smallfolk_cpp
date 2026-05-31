@@ -12,6 +12,11 @@ namespace
 {
     int failures = 0;
 
+    bool is_nan(double value)
+    {
+        return value != value || std::isnan(value);
+    }
+
     void expect_true(bool condition, char const * message)
     {
         if (!condition)
@@ -80,6 +85,7 @@ static void test_non_finite_numbers()
     };
     std::string serialized = values.dumps();
     expect_true(!serialized.empty(), "non-finite values serialize");
+    expect_equal(serialized, "{N,Q,I,i}", "non-finite wire tokens");
 
     std::string err;
     LuaVal loaded = LuaVal::loads(serialized, &err);
@@ -88,8 +94,8 @@ static void test_non_finite_numbers()
     if (!loaded.istable())
         return;
 
-    expect_true(std::isnan(loaded.get(1).num()), "NaN round-trip slot 1");
-    expect_true(std::isnan(loaded.get(2).num()), "NaN round-trip slot 2");
+    expect_true(is_nan(loaded.get(1).num()), "NaN round-trip slot 1");
+    expect_true(is_nan(loaded.get(2).num()), "NaN round-trip slot 2");
     expect_true(loaded.get(3).num() > 0, "positive infinity round-trip");
     expect_true(loaded.get(4).num() < 0, "negative infinity round-trip");
 }
@@ -660,8 +666,8 @@ static void test_lua_smallfolk_interop_wires()
         expect_true(err.empty(), "lua wire non-finite array loads");
         expect_true(std::isinf(value.get(1).num()) && value.get(1).num() > 0.0, "lua wire I is +inf");
         expect_true(std::isinf(value.get(2).num()) && value.get(2).num() < 0.0, "lua wire i is -inf");
-        expect_true(std::isnan(value.get(3).num()), "lua wire N is nan");
-        expect_true(std::isnan(value.get(4).num()), "lua wire Q is nan");
+        expect_true(is_nan(value.get(3).num()), "lua wire N is nan");
+        expect_true(is_nan(value.get(4).num()), "lua wire Q is nan");
     }
 
     {

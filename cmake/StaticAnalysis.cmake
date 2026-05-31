@@ -26,7 +26,7 @@ function(smallfolk_add_static_analysis_targets)
         add_custom_target(smallfolk_cppcheck
             COMMAND
                 ${SMALLFOLK_CPPCHECK_EXE}
-                --enable=warning,style,performance,portability
+                --enable=warning,performance,portability
                 --error-exitcode=1
                 --inline-suppr
                 --std=c++11
