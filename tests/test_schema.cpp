@@ -28,15 +28,30 @@ namespace
     }
 }
 
-static Schema const number_schema = { SchemaKind::Number };
-static Schema const string_schema = { SchemaKind::String };
-static Schema const bool_schema = { SchemaKind::Bool };
-static Schema const null_schema = { SchemaKind::Null };
+static Schema const number_schema = [] {
+    Schema s;
+    s.kind = SchemaKind::Number;
+    return s;
+}();
+static Schema const string_schema = [] {
+    Schema s;
+    s.kind = SchemaKind::String;
+    return s;
+}();
+static Schema const bool_schema = [] {
+    Schema s;
+    s.kind = SchemaKind::Bool;
+    return s;
+}();
+static Schema const null_schema = [] {
+    Schema s;
+    s.kind = SchemaKind::Null;
+    return s;
+}();
 
 static Schema const bounded_number_schema = schema::number_range(0.0, 100.0);
 
-static char const * enum_colors[] = { "red", "blue" };
-static Schema const enum_string_schema = schema::string_enum(enum_colors, 2);
+static Schema const enum_string_schema = schema::string_enum({ "red", "blue" });
 
 static Schema const array_schema = schema::array_of(schema::string(), 1, 3);
 
@@ -60,37 +75,26 @@ static bool positive_hp_validator(LuaVal const & value, std::string * err, char 
     return true;
 }
 
-static Schema const player_schema = {
-    SchemaKind::Object,
-    nullptr,
-    0,
-    static_cast<unsigned>(-1),
-    player_fields,
-    3,
-    false
-};
+static Schema const player_schema = [] {
+    Schema s;
+    s.kind = SchemaKind::Object;
+    s.fields = player_fields;
+    s.field_count = 3;
+    s.allow_extra_keys = false;
+    return s;
+}();
 
 static Schema const number_or_string_schema = schema::number_or_string();
 
-static Schema const custom_player_schema = {
-    SchemaKind::Object,
-    nullptr,
-    0,
-    static_cast<unsigned>(-1),
-    player_fields,
-    2,
-    true,
-    false,
-    false,
-    0.0,
-    0.0,
-    nullptr,
-    0,
-    nullptr,
-    0,
-    nullptr,
-    positive_hp_validator
-};
+static Schema const custom_player_schema = [] {
+    Schema schema;
+    schema.kind = SchemaKind::Object;
+    schema.fields = player_fields;
+    schema.field_count = 2;
+    schema.allow_extra_keys = true;
+    schema.validator = positive_hp_validator;
+    return schema;
+}();
 
 static void test_basic_schema_kinds()
 {
@@ -114,6 +118,16 @@ static void test_number_bounds()
     expect_false(validate(LuaVal(101), bounded_number_schema), "bounded number rejects above max");
 }
 
+static void test_string_length()
+{
+    Schema const username_schema = schema::string_length(3, 12);
+
+    expect_true(validate(LuaVal("Ada"), username_schema), "string_length accepts in-range value");
+    expect_false(validate(LuaVal("ab"), username_schema), "string_length rejects too short");
+    expect_false(validate(LuaVal("way_too_long_username"), username_schema), "string_length rejects too long");
+    expect_false(validate(LuaVal(42), username_schema), "string_length rejects non-string");
+}
+
 static void test_array_schema()
 {
     expect_true(validate(LuaVal{ LuaVal("a"), LuaVal("b") }, array_schema), "array schema accepts valid array");
@@ -121,6 +135,11 @@ static void test_array_schema()
     expect_false(validate(LuaVal::table(), array_schema), "array schema rejects empty array");
     expect_false(validate(LuaVal{ 1, 2, 3, 4 }, array_schema), "array schema rejects too many items");
     expect_false(validate(LuaVal{ 1 }, array_schema), "array schema rejects non-string item");
+
+    Schema const other_array = schema::array_of(schema::number(), 1, 2);
+    LuaVal const one_number = LuaVal(std::initializer_list<LuaVal>{ LuaVal(1) });
+    expect_true(validate(one_number, other_array), "second array schema is independent");
+    expect_false(validate(LuaVal(std::initializer_list<LuaVal>{ LuaVal("x") }), other_array), "second array schema uses its own element type");
 }
 
 static void test_object_schema()
@@ -147,6 +166,10 @@ static void test_enum_string()
 {
     expect_true(validate(LuaVal("red"), enum_string_schema), "enum accepts allowed value");
     expect_false(validate(LuaVal("green"), enum_string_schema), "enum rejects disallowed value");
+
+    Schema const other_enum = schema::string_enum({ "green", "yellow" });
+    expect_true(validate(LuaVal("green"), other_enum), "second enum schema is independent");
+    expect_false(validate(LuaVal("red"), other_enum), "second enum schema does not share first values");
 }
 
 static void test_one_of()
@@ -208,25 +231,12 @@ static void test_loads_validated()
 
 static void test_any_with_custom_validator()
 {
-    Schema const any_positive = {
-        SchemaKind::Any,
-        nullptr,
-        0,
-        static_cast<unsigned>(-1),
-        nullptr,
-        0,
-        true,
-        false,
-        false,
-        0.0,
-        0.0,
-        nullptr,
-        0,
-        nullptr,
-        0,
-        nullptr,
-        positive_hp_validator
-    };
+    Schema const any_positive = [] {
+        Schema schema;
+        schema.kind = SchemaKind::Any;
+        schema.validator = positive_hp_validator;
+        return schema;
+    }();
 
     LuaVal table = LuaVal::table();
     table.set(std::string("hp"), LuaVal(5));
@@ -338,6 +348,7 @@ int main()
 
     test_basic_schema_kinds();
     test_number_bounds();
+    test_string_length();
     test_array_schema();
     test_object_schema();
     test_enum_string();

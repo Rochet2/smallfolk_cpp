@@ -4,6 +4,8 @@
 #include "smallfolk.h"
 
 #include <cstddef>
+#include <initializer_list>
+#include <memory>
 #include <string>
 #include <unordered_map>
 #include <unordered_set>
@@ -27,7 +29,17 @@ struct Schema
 {
     SchemaKind kind = SchemaKind::Any;
 
+    // External child refs (static presets, Field.schema, cyclic schema::value() graph).
     Schema const * items = nullptr;
+    Schema const * values = nullptr;
+    Schema const * const * alternatives = nullptr;
+    size_t alternative_count = 0;
+
+    // Owned children (self-contained factory-built schemas).
+    std::unique_ptr<Schema> items_owned;
+    std::unique_ptr<Schema> values_owned;
+    std::vector<Schema> alternatives_owned;
+
     unsigned min_items = 0;
     unsigned max_items = static_cast<unsigned>(-1);
 
@@ -46,16 +58,20 @@ struct Schema
     double min_value = 0.0;
     double max_value = 0.0;
 
-    char const * const * enum_values = nullptr;
-    size_t enum_count = 0;
-
-    Schema const * const * alternatives = nullptr;
-    size_t alternative_count = 0;
-
-    // When set on Object schemas, every entry must have a string key and a value matching this schema.
-    Schema const * values = nullptr;
+    std::vector<std::string> enum_strings;
 
     SchemaValidatorFn validator = nullptr;
+
+    bool has_min_length = false;
+    bool has_max_length = false;
+    unsigned min_length = 0;
+    unsigned max_length = 0;
+
+    Schema() = default;
+    Schema(Schema const & other);
+    Schema & operator=(Schema const & other);
+    Schema(Schema && other) = default;
+    Schema & operator=(Schema && other) = default;
 };
 
 struct ValidateLimits
@@ -176,8 +192,8 @@ LuaVal loads_validated_or_throw(
 namespace schema {
 
 // Preset references are safe to share across threads after process startup.
-// Factory functions (array_of, map_of, string_enum, one_of) use internal
-// synchronization; returned Schema nodes remain valid for the process lifetime.
+// Factory functions return self-contained Schema values (move-friendly). Internal
+// cyclic presets (schema::value()) remain static.
 
 Schema const & any();
 Schema const & null();
@@ -194,14 +210,18 @@ Schema const & number_or_string();
 Schema const & value();
 
 Schema number_range(double min_value, double max_value);
+Schema string_length(unsigned min_length, unsigned max_length);
 Schema array_of(
-    Schema const & element,
+    Schema element,
     unsigned min_items = 0,
     unsigned max_items = static_cast<unsigned>(-1));
 Schema map_of(
-    Schema const & value_schema,
+    Schema value_schema,
     bool allow_extra_keys = true);
-Schema string_enum(char const * const * values, size_t count);
+Schema string_enum(std::vector<std::string> values);
+Schema string_enum(std::initializer_list<std::string> values);
+Schema one_of(std::vector<Schema> alternatives);
+Schema one_of(std::initializer_list<Schema> alternatives);
 Schema one_of(Schema const * const * alternatives, size_t count);
 
 } // namespace schema

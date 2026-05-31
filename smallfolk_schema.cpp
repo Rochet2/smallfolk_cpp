@@ -2,13 +2,71 @@
 
 #include <cmath>
 #include <cstdio>
-#include <deque>
 #include <mutex>
 #include <sstream>
 #include <unordered_set>
 
 namespace
 {
+    Schema const * item_schema(Schema const & node)
+    {
+        if (node.items_owned)
+            return node.items_owned.get();
+        return node.items;
+    }
+
+    Schema const * value_schema(Schema const & node)
+    {
+        if (node.values_owned)
+            return node.values_owned.get();
+        return node.values;
+    }
+
+    size_t one_of_size(Schema const & node)
+    {
+        if (!node.alternatives_owned.empty())
+            return node.alternatives_owned.size();
+        return node.alternative_count;
+    }
+
+    Schema const * one_of_at(Schema const & node, size_t index)
+    {
+        if (!node.alternatives_owned.empty())
+            return &node.alternatives_owned[index];
+        return node.alternatives[index];
+    }
+
+    bool one_of_empty(Schema const & node)
+    {
+        return one_of_size(node) == 0;
+    }
+
+    void copy_owned_children(Schema const & other, Schema & out)
+    {
+        if (other.items_owned)
+            out.items_owned.reset(new Schema(*other.items_owned));
+        else
+            out.items = other.items;
+
+        if (other.values_owned)
+            out.values_owned.reset(new Schema(*other.values_owned));
+        else
+            out.values = other.values;
+
+        if (!other.alternatives_owned.empty())
+        {
+            out.alternatives_owned.reserve(other.alternatives_owned.size());
+            for (size_t i = 0; i < other.alternatives_owned.size(); ++i)
+                out.alternatives_owned.push_back(Schema(other.alternatives_owned[i]));
+            out.alternatives = nullptr;
+            out.alternative_count = 0;
+        }
+        else
+        {
+            out.alternatives = other.alternatives;
+            out.alternative_count = other.alternative_count;
+        }
+    }
     bool append_error(std::string * err, std::string const & message)
     {
         if (err)
@@ -42,11 +100,11 @@ namespace
 
     bool matches_enum_string(LuaVal const & value, Schema const & schema)
     {
-        if (!schema.enum_values || schema.enum_count == 0)
+        if (schema.enum_strings.empty())
             return true;
-        for (size_t i = 0; i < schema.enum_count; ++i)
+        for (size_t i = 0; i < schema.enum_strings.size(); ++i)
         {
-            if (value.str() == schema.enum_values[i])
+            if (value.str() == schema.enum_strings[i])
                 return true;
         }
         return false;
@@ -86,6 +144,57 @@ namespace
     }
 }
 
+Schema::Schema(Schema const & other)
+    : kind(other.kind)
+    , min_items(other.min_items)
+    , max_items(other.max_items)
+    , fields(other.fields)
+    , field_count(other.field_count)
+    , allow_extra_keys(other.allow_extra_keys)
+    , has_min(other.has_min)
+    , has_max(other.has_max)
+    , min_value(other.min_value)
+    , max_value(other.max_value)
+    , enum_strings(other.enum_strings)
+    , validator(other.validator)
+    , has_min_length(other.has_min_length)
+    , has_max_length(other.has_max_length)
+    , min_length(other.min_length)
+    , max_length(other.max_length)
+{
+    copy_owned_children(other, *this);
+}
+
+Schema & Schema::operator=(Schema const & other)
+{
+    if (this == &other)
+        return *this;
+    kind = other.kind;
+    items = nullptr;
+    values = nullptr;
+    alternatives = nullptr;
+    items_owned.reset();
+    values_owned.reset();
+    alternatives_owned.clear();
+    min_items = other.min_items;
+    max_items = other.max_items;
+    fields = other.fields;
+    field_count = other.field_count;
+    allow_extra_keys = other.allow_extra_keys;
+    has_min = other.has_min;
+    has_max = other.has_max;
+    min_value = other.min_value;
+    max_value = other.max_value;
+    enum_strings = other.enum_strings;
+    validator = other.validator;
+    has_min_length = other.has_min_length;
+    has_max_length = other.has_max_length;
+    min_length = other.min_length;
+    max_length = other.max_length;
+    copy_owned_children(other, *this);
+    return *this;
+}
+
 CompiledSchema::CompiledSchema(Schema const & schema) : schema_(schema)
 {
     std::unordered_set<Schema const *> visited;
@@ -109,8 +218,8 @@ void CompiledSchema::compile_node(Schema const & node, std::unordered_set<Schema
         object_indexes_.push_back(index);
     }
 
-    if (node.items)
-        compile_node(*node.items, visited);
+    if (Schema const * items = item_schema(node))
+        compile_node(*items, visited);
 
     if (node.fields)
     {
@@ -121,16 +230,13 @@ void CompiledSchema::compile_node(Schema const & node, std::unordered_set<Schema
         }
     }
 
-    if (node.values)
-        compile_node(*node.values, visited);
+    if (Schema const * values = value_schema(node))
+        compile_node(*values, visited);
 
-    if (node.alternatives)
+    for (size_t i = 0; i < one_of_size(node); ++i)
     {
-        for (size_t i = 0; i < node.alternative_count; ++i)
-        {
-            if (node.alternatives[i])
-                compile_node(*node.alternatives[i], visited);
-        }
+        if (Schema const * alternative = one_of_at(node, i))
+            compile_node(*alternative, visited);
     }
 }
 
@@ -219,8 +325,16 @@ bool CompiledSchema::validate_impl(
     case SchemaKind::String:
         if (!value.isstring())
             return append_error(err, path + ": expected string");
-        else if (!matches_enum_string(value, node))
-            return append_error(err, path + ": string not in enum");
+        else
+        {
+            size_t const length = value.str().size();
+            if (node.has_min_length && length < node.min_length)
+                return append_error(err, path + ": string too short");
+            if (node.has_max_length && length > node.max_length)
+                return append_error(err, path + ": string too long");
+            if (!matches_enum_string(value, node))
+                return append_error(err, path + ": string not in enum");
+        }
         break;
     case SchemaKind::Array:
         if (!value.istable())
@@ -232,13 +346,13 @@ bool CompiledSchema::validate_impl(
                 return append_error(err, path + ": array too short");
             if (length > node.max_items)
                 return append_error(err, path + ": array too long");
-            if (node.items)
+            if (Schema const * items = item_schema(node))
             {
                 for (unsigned int i = 1; i <= length; ++i)
                 {
                     std::ostringstream segment;
                     segment << "[" << i << "]";
-                    if (!validate_impl(value.get(static_cast<int>(i)), *node.items, err, join_path(path, segment.str()), ctx))
+                    if (!validate_impl(value.get(static_cast<int>(i)), *items, err, join_path(path, segment.str()), ctx))
                         return false;
                 }
             }
@@ -266,18 +380,18 @@ bool CompiledSchema::validate_impl(
                 }
             }
 
-            if (node.values)
+            if (Schema const * values = value_schema(node))
             {
                 for (LuaVal::LuaTable::const_iterator it = value.tbl().begin(); it != value.tbl().end(); ++it)
                 {
                     if (!it->first.isstring())
                         return append_error(err, path + ": object key must be string");
-                    if (!validate_impl(it->second, *node.values, err, join_path(path, key_to_segment(it->first)), ctx))
+                    if (!validate_impl(it->second, *values, err, join_path(path, key_to_segment(it->first)), ctx))
                         return false;
                 }
             }
 
-            if (!node.allow_extra_keys && !node.values)
+            if (!node.allow_extra_keys && !value_schema(node))
             {
                 for (LuaVal::LuaTable::const_iterator it = value.tbl().begin(); it != value.tbl().end(); ++it)
                 {
@@ -307,19 +421,20 @@ bool CompiledSchema::validate_impl(
         }
         break;
     case SchemaKind::OneOf:
-        if (!node.alternatives || node.alternative_count == 0)
+        if (one_of_empty(node))
             return append_error(err, path + ": empty one_of schema");
         else
         {
             std::string branch_errors;
-            for (size_t i = 0; i < node.alternative_count; ++i)
+            for (size_t i = 0; i < one_of_size(node); ++i)
             {
-                if (!node.alternatives[i])
+                Schema const * alternative = one_of_at(node, i);
+                if (!alternative)
                     continue;
-                if (!kind_accepts_value_tag(node.alternatives[i]->kind, value))
+                if (!kind_accepts_value_tag(alternative->kind, value))
                     continue;
                 std::string branch_err;
-                if (validate_impl(value, *node.alternatives[i], &branch_err, path, ctx))
+                if (validate_impl(value, *alternative, &branch_err, path, ctx))
                     return run_custom_validator(value, node, err, path);
                 if (!branch_err.empty())
                 {
@@ -484,84 +599,58 @@ LuaVal loads_validated_or_throw(
 
 namespace schema
 {
-namespace
+
+Schema kind_schema(SchemaKind kind)
 {
-    std::mutex g_schema_factory_mutex;
-
-    struct EnumSchemaStorage
-    {
-        std::vector<std::string> strings;
-        std::vector<char const *> pointers;
-        Schema schema;
-
-        EnumSchemaStorage(char const * const * values, size_t count)
-        {
-            strings.reserve(count);
-            for (size_t i = 0; i < count; ++i)
-                strings.push_back(values[i]);
-            pointers.reserve(count);
-            for (size_t i = 0; i < count; ++i)
-                pointers.push_back(strings[i].c_str());
-            schema.kind = SchemaKind::String;
-            schema.enum_values = pointers.data();
-            schema.enum_count = count;
-        }
-    };
-
-    struct OneOfSchemaStorage
-    {
-        std::vector<Schema const *> alternatives;
-        Schema schema;
-
-        OneOfSchemaStorage(Schema const * const * values, size_t count)
-        {
-            alternatives.assign(values, values + count);
-            schema.kind = SchemaKind::OneOf;
-            schema.alternatives = alternatives.data();
-            schema.alternative_count = count;
-        }
-    };
+    Schema schema;
+    schema.kind = kind;
+    return schema;
 }
 
 Schema const & any()
 {
-    static Schema const schema = { SchemaKind::Any };
+    static Schema const schema = kind_schema(SchemaKind::Any);
     return schema;
 }
 
 Schema const & null()
 {
-    static Schema const schema = { SchemaKind::Null };
+    static Schema const schema = kind_schema(SchemaKind::Null);
     return schema;
 }
 
 Schema const & boolean()
 {
-    static Schema const schema = { SchemaKind::Bool };
+    static Schema const schema = kind_schema(SchemaKind::Bool);
     return schema;
 }
 
 Schema const & number()
 {
-    static Schema const schema = { SchemaKind::Number };
+    static Schema const schema = kind_schema(SchemaKind::Number);
     return schema;
 }
 
 Schema const & string()
 {
-    static Schema const schema = { SchemaKind::String };
+    static Schema const schema = kind_schema(SchemaKind::String);
     return schema;
 }
 
 Schema const & object()
 {
-    static Schema const schema = { SchemaKind::Object, nullptr, 0, static_cast<unsigned>(-1), nullptr, 0, true };
+    static Schema const schema = [] {
+        Schema s;
+        s.kind = SchemaKind::Object;
+        s.allow_extra_keys = true;
+        return s;
+    }();
     return schema;
 }
 
 Schema const & array()
 {
-    static Schema const schema = { SchemaKind::Array, nullptr, 0, static_cast<unsigned>(-1) };
+    static Schema const schema = kind_schema(SchemaKind::Array);
     return schema;
 }
 
@@ -569,7 +658,10 @@ Schema const & string_array()
 {
     static Schema schema;
     static std::once_flag once;
-    std::call_once(once, [] { schema = { SchemaKind::Array, &string(), 0, static_cast<unsigned>(-1) }; });
+    std::call_once(once, [] {
+        schema.kind = SchemaKind::Array;
+        schema.items = &string();
+    });
     return schema;
 }
 
@@ -577,7 +669,10 @@ Schema const & number_array()
 {
     static Schema schema;
     static std::once_flag once;
-    std::call_once(once, [] { schema = { SchemaKind::Array, &number(), 0, static_cast<unsigned>(-1) }; });
+    std::call_once(once, [] {
+        schema.kind = SchemaKind::Array;
+        schema.items = &number();
+    });
     return schema;
 }
 
@@ -585,33 +680,25 @@ Schema const & boolean_array()
 {
     static Schema schema;
     static std::once_flag once;
-    std::call_once(once, [] { schema = { SchemaKind::Array, &boolean(), 0, static_cast<unsigned>(-1) }; });
+    std::call_once(once, [] {
+        schema.kind = SchemaKind::Array;
+        schema.items = &boolean();
+    });
     return schema;
 }
 
 Schema const & number_or_string()
 {
-    static Schema number_alt = { SchemaKind::Number };
-    static Schema string_alt = { SchemaKind::String };
+    static Schema number_alt = kind_schema(SchemaKind::Number);
+    static Schema string_alt = kind_schema(SchemaKind::String);
     static Schema const * alternatives[] = { &number_alt, &string_alt };
-    static Schema const schema = {
-        SchemaKind::OneOf,
-        nullptr,
-        0,
-        static_cast<unsigned>(-1),
-        nullptr,
-        0,
-        true,
-        false,
-        false,
-        0.0,
-        0.0,
-        nullptr,
-        0,
-        alternatives,
-        2,
-        nullptr
-    };
+    static Schema schema;
+    static std::once_flag once;
+    std::call_once(once, [&] {
+        schema.kind = SchemaKind::OneOf;
+        schema.alternatives = alternatives;
+        schema.alternative_count = 2;
+    });
     return schema;
 }
 
@@ -624,8 +711,10 @@ Schema const & value()
     static std::once_flag once;
     std::call_once(once, [] {
         value_node.kind = SchemaKind::OneOf;
-        array_node = { SchemaKind::Array, &value_node, 0, static_cast<unsigned>(-1) };
-        map_node = { SchemaKind::Object, nullptr, 0, static_cast<unsigned>(-1), nullptr, 0, true };
+        array_node.kind = SchemaKind::Array;
+        array_node.items = &value_node;
+        map_node.kind = SchemaKind::Object;
+        map_node.allow_extra_keys = true;
         map_node.values = &value_node;
         alternatives[0] = &null();
         alternatives[1] = &boolean();
@@ -641,7 +730,7 @@ Schema const & value()
 
 Schema number_range(double min_value, double max_value)
 {
-    Schema schema = { SchemaKind::Number };
+    Schema schema = kind_schema(SchemaKind::Number);
     schema.has_min = true;
     schema.has_max = true;
     schema.min_value = min_value;
@@ -649,43 +738,71 @@ Schema number_range(double min_value, double max_value)
     return schema;
 }
 
-Schema array_of(Schema const & element, unsigned min_items, unsigned max_items)
+Schema string_length(unsigned min_length, unsigned max_length)
 {
-    std::lock_guard<std::mutex> lock(g_schema_factory_mutex);
-    static std::deque<Schema> elements;
-    static std::deque<Schema> arrays;
-    elements.push_back(element);
-    Schema schema = { SchemaKind::Array, &elements.back(), min_items, max_items };
-    arrays.push_back(schema);
-    return arrays.back();
+    Schema schema = kind_schema(SchemaKind::String);
+    schema.has_min_length = true;
+    schema.has_max_length = true;
+    schema.min_length = min_length;
+    schema.max_length = max_length;
+    return schema;
 }
 
-Schema map_of(Schema const & value_schema, bool allow_extra_keys)
+Schema array_of(Schema element, unsigned min_items, unsigned max_items)
 {
-    std::lock_guard<std::mutex> lock(g_schema_factory_mutex);
-    static std::deque<Schema> values;
-    static std::deque<Schema> maps;
-    values.push_back(value_schema);
-    Schema schema = { SchemaKind::Object, nullptr, 0, static_cast<unsigned>(-1), nullptr, 0, allow_extra_keys };
-    schema.values = &values.back();
-    maps.push_back(schema);
-    return maps.back();
+    Schema schema;
+    schema.kind = SchemaKind::Array;
+    schema.min_items = min_items;
+    schema.max_items = max_items;
+    schema.items_owned.reset(new Schema(std::move(element)));
+    return schema;
 }
 
-Schema string_enum(char const * const * values, size_t count)
+Schema map_of(Schema value_schema, bool allow_extra_keys)
 {
-    std::lock_guard<std::mutex> lock(g_schema_factory_mutex);
-    static std::deque<EnumSchemaStorage> storage;
-    storage.emplace_back(values, count);
-    return storage.back().schema;
+    Schema schema;
+    schema.kind = SchemaKind::Object;
+    schema.allow_extra_keys = allow_extra_keys;
+    schema.values_owned.reset(new Schema(std::move(value_schema)));
+    return schema;
+}
+
+Schema string_enum(std::vector<std::string> values)
+{
+    Schema schema;
+    schema.kind = SchemaKind::String;
+    schema.enum_strings = std::move(values);
+    return schema;
+}
+
+Schema string_enum(std::initializer_list<std::string> values)
+{
+    return string_enum(std::vector<std::string>(values));
+}
+
+Schema one_of(std::vector<Schema> alternatives)
+{
+    Schema schema;
+    schema.kind = SchemaKind::OneOf;
+    schema.alternatives_owned = std::move(alternatives);
+    return schema;
+}
+
+Schema one_of(std::initializer_list<Schema> alternatives)
+{
+    return one_of(std::vector<Schema>(alternatives));
 }
 
 Schema one_of(Schema const * const * alternatives, size_t count)
 {
-    std::lock_guard<std::mutex> lock(g_schema_factory_mutex);
-    static std::deque<OneOfSchemaStorage> storage;
-    storage.emplace_back(alternatives, count);
-    return storage.back().schema;
+    std::vector<Schema> owned;
+    owned.reserve(count);
+    for (size_t i = 0; i < count; ++i)
+    {
+        if (alternatives[i])
+            owned.push_back(*alternatives[i]);
+    }
+    return one_of(std::move(owned));
 }
 
 } // namespace schema

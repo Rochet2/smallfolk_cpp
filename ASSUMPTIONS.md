@@ -40,7 +40,9 @@ This document records behavioral assumptions baked into smallfolk_cpp. If you re
 - **`LuaVal` mutation is not thread-safe.** Do not share a mutable `LuaVal` across threads without external locking. Treat parsed values as immutable when cached.
 - **`CompiledSchema` is immutable after construction** and safe to share read-only across threads.
 - **`schema::` preset references** (`number()`, `value()`, etc.) are safe to share after process startup.
-- **`schema::array_of()` / `map_of()` / `string_enum()` / `one_of()`** use internal synchronization; returned `Schema` nodes remain valid for the process lifetime.
+- **`schema::array_of()` / `map_of()` / `one_of()`** return self-contained `Schema` values (owned child schemas; move-friendly).
+- **`schema::string_enum()`** returns a self-contained `Schema` that owns its allowed strings.
+- Internal cyclic presets such as **`schema::value()`** remain static and use external child pointers.
 - **`validate(value, Schema)` recompiles on every call** — thread-safe but slow; prefer a shared `CompiledSchema`.
 
 ## Locale and platform

@@ -135,7 +135,7 @@ Tune limits for your deployment. See [ASSUMPTIONS.md](ASSUMPTIONS.md) for what i
 
 ## Tested
 
-Automated tests live in `tests/test_smallfolk.cpp` and `tests/test_schema.cpp`, run via the `smallfolk_tests` and `smallfolk_schema_tests` targets. The original interactive walkthrough from `main.cpp` now lives in `examples/demo.cpp` as the `smallfolk_demo` target (also run by CTest when `-DSMALLFOLK_BUILD_EXAMPLES=ON`, default).
+Automated tests live in `tests/test_smallfolk.cpp` and `tests/test_schema.cpp`, run via the `smallfolk_tests` and `smallfolk_schema_tests` targets. The original interactive walkthrough from `main.cpp` now lives in `examples/demo.cpp` as the `smallfolk_demo` target (also run by CTest when `-DSMALLFOLK_BUILD_EXAMPLES=ON`, default). The demo uses a `DEMO_CHECK` macro instead of `assert()` so runtime verification still runs in Release/NDEBUG builds.
 
 The code has also been in use with a server-client C++-Lua communication system called AIO through which the API has been made more usable and critical issues have been addressed.
 
@@ -207,7 +207,7 @@ Fields:
 | Mutable `LuaVal` | **Not thread-safe** — treat parsed values as immutable when shared |
 | `CompiledSchema` | Immutable after construction; safe to share read-only |
 | `schema::number()` and other presets | Safe after startup |
-| `schema::array_of()` / `map_of()` / … | Synchronized factories; returned nodes valid for process lifetime |
+| `schema::array_of()` / `map_of()` / `one_of()` / `string_enum()` | Self-contained `Schema` values; store in `static Schema const` when taking `&schema` for fields |
 | `validate(value, Schema)` | Thread-safe but recompiles each call — use `CompiledSchema` instead |
 
 See `ASSUMPTIONS.md` for full threading and security notes.
@@ -243,11 +243,12 @@ LuaVal player = loads_validated(payload, compiled, load_limits, validate_limits,
 Supported schema features:
 
 - Kinds: `Any`, `Null`, `Bool`, `Number`, `String`, `Array`, `Object`, `OneOf`
-- Built-in presets in `namespace schema`: `number()`, `string()`, `array()`, `object()`, `value()` (recursive JSON-like), `number_range()`, `array_of()`, `map_of()`, `string_enum()`, `one_of()`, and more
+- Built-in presets in `namespace schema`: `number()`, `string()`, `array()`, `object()`, `value()` (recursive JSON-like), `number_range()`, `string_length()`, `array_of()`, `map_of()`, `string_enum()`, `one_of()`, and more
 - Number min/max bounds
+- String min/max length (`string_length(min, max)`)
 - Array min/max length and per-element schema
 - Object required fields and `allow_extra_keys`
-- `enum_values` for string enums
+- `enum_strings` on `Schema` for string enums (owned by the schema; use `schema::string_enum({...})`)
 - `alternatives` for `OneOf` unions
 - `validator` callback for custom checks
 - `ValidateLimits` depth/step budgets (`untrusted_validate_limits()`)
