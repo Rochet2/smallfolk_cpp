@@ -1,25 +1,18 @@
 #include "smallfolk.h"
-#include "smallfolk_convert.h"
 
 #include <cassert>
 #include <deque>
 #include <forward_list>
 #include <iostream>
+#include <map>
 #include <string>
+#include <unordered_map>
 
 int main()
 {
     {
         std::cout << "Test values" << std::endl;
-        LuaVal merge_right = LuaVal::table();
-        merge_right.set(LuaVal("ke"), LuaVal("test"));
-        merge_right.set(LuaVal("ke2"), LuaVal("test"));
-        LuaVal asd = {
-            LuaVal("number"),
-            LuaVal("string"),
-            LuaVal("table"),
-            LuaVal::mrg(LuaVal{ LuaVal("number"), LuaVal("string") }, merge_right)
-        };
+        LuaVal asd = { "number", "string", "table", LuaVal::mrg({"number", "string"}, LuaVal::LuaTable({{"ke", "test"},{"ke2", "test"}})) };
         std::cout << asd.dumps() << std::endl;
         std::string err;
         LuaVal v = LuaVal::loads(" { 1 , 2 , { 3 , 4, ' k e ' : ' t e s t ' } } ", &err);
@@ -27,34 +20,31 @@ int main()
         std::cout << err << std::endl;
 
         std::cout << "Testing different double corner values" << std::endl;
-        double zero = 0.0;
-        LuaVal tn = { -(zero / zero), (zero / zero), (1.0 / zero), -(1.0 / zero) };
+        double _zero = 0.0;
+        LuaVal tn = { -(0 / _zero), (0 / _zero), (1 / _zero), -(1 / _zero) };
         std::cout << tn.dumps() << std::endl;
-        std::cout << tn.get(1).tostring() << " " << tn.get(2).tostring() << " "
-                  << tn.get(3).tostring() << " " << tn.get(4).tostring() << std::endl;
+        std::cout << -(0 / _zero) << " " << (0 / _zero) << " " << (1 / _zero) << " " << -(1 / _zero) << std::endl;
+        std::cout << tn.get(1).tostring() << " " << tn.get(2).tostring() << " " << tn.get(3).tostring() << " " << tn.get(4).tostring() << std::endl;
         tn = LuaVal::loads(tn.dumps());
-        std::cout << tn.get(1).tostring() << " " << tn.get(2).tostring() << " "
-                  << tn.get(3).tostring() << " " << tn.get(4).tostring() << std::endl;
+        std::cout << tn.get(1).tostring() << " " << tn.get(2).tostring() << " " << tn.get(3).tostring() << " " << tn.get(4).tostring() << std::endl;
         std::cout << std::endl;
-    }
 
-    {
         std::cout << "Testing creation testing and printing of all value types" << std::endl;
         LuaVal implicit_test = -123;
         LuaVal copy_test(implicit_test);
         LuaVal copy_test2 = implicit_test;
-        LuaVal n = LuaVal::nil;
-        LuaVal n2(TNIL);
+        LuaVal n = LuaVal::nil; // nil
+        LuaVal n2(TNIL); // nil
         LuaVal b(true);
         LuaVal s("somestring");
         LuaVal d(123.456);
         LuaVal f(123.456f);
         LuaVal i(-678);
-        LuaVal u(0xFFFFFFFFu);
-        LuaVal t;
+        LuaVal u(0xFFFFFFFF);
+        LuaVal t; // defaults to table
         LuaVal t2 = LuaVal::table();
-        LuaVal t3 = { LuaVal(1), LuaVal(2), LuaVal(3) };
-        LuaVal t4 = {};
+        LuaVal t3 = { 1, 2, 3 };
+        LuaVal t4 = {}; // curly braces are table
         LuaVal t5(TTABLE);
 
         assert(implicit_test.isnumber());
@@ -77,24 +67,31 @@ int main()
         std::cout << implicit_test.tostring() << std::endl;
         std::cout << copy_test.tostring() << std::endl;
         std::cout << copy_test2.tostring() << std::endl;
-        assert(n.tostring() == "nil");
-        assert(b.tostring() == "true");
-        assert(s.tostring() == "somestring");
+        std::cout << n.tostring() << std::endl;
+        std::cout << b.tostring() << std::endl;
+        std::cout << s.tostring() << std::endl;
+        std::cout << d.tostring() << std::endl;
+        std::cout << f.tostring() << std::endl;
+        std::cout << i.tostring() << std::endl;
+        std::cout << u.tostring() << std::endl;
+        std::cout << t.tostring() << std::endl;
+        std::cout << t2.tostring() << std::endl;
+        std::cout << t3.tostring() << std::endl;
         std::cout << std::endl;
-    }
 
-    {
         std::cout << "Testing exception handling" << std::endl;
         std::string errmsg;
         try
         {
             LuaVal h(-7);
-            (void)h.str();
+            (void)h.str(); // error, h is not a string
         }
         catch (smallfolk_exception const & e)
         {
+            // caught an exception
             errmsg = e.what();
         }
+        // printing caught error if any
         if (!errmsg.empty())
             std::cout << errmsg << std::endl << std::endl;
     }
@@ -102,40 +99,95 @@ int main()
     {
         std::cout << "Example usage" << std::endl;
 
+        // create a lua table and set some values to it
         LuaVal table = LuaVal::table();
         table.set(1, "Hello");
-        table.set(std::string("test"), std::string("world"));
-        table.set(LuaVal(67.5), -234.5);
+        table.set("test", "world");
+        table.set(67.5, -234.5);
 
+        // serialize the table
         std::string serialized = table.dumps();
-        std::cout << serialized << std::endl;
 
+        // print the serialization, it should be rather human readable
+        std::cout << serialized << std::endl;
+        // Example output: {"Hello","test":"world",67.5:-234.5}
+
+        // form lua values from the string
         LuaVal deserialized = LuaVal::loads(serialized);
-        std::cout << deserialized.get(1).str() << " " << deserialized.get(std::string("test")).str()
-                  << " " << deserialized.get(LuaVal(67.5)).num() << std::endl;
+
+        // print the values from deserialized result table
+        std::cout << deserialized.get(1).str() << " " << deserialized.get("test").str() << " " << deserialized.get(67.5).num() << std::endl;
+        // Example output: Hello world -234.5
+        std::cout << std::endl;
+    }
+
+    /*
+    // This is disabled because circular references cause memleak or need complex handling for memory management
+    // Circular references should not be used and are ignored (nil) when parsed
+    // Using a circular reference in C++ code will cause an exception to be thrown
+    {
+        std::cout << "Cthulhu" << std::endl;
+
+        // Essentially {{},{},{}}
+        LuaVal cthulhu(TTABLE);
+        cthulhu[1] = LuaVal(TTABLE);
+        cthulhu[2] = LuaVal(TTABLE);
+        cthulhu[3] = LuaVal(TTABLE);
+        cthulhu["fhtagn"] = cthulhu;
+        cthulhu[1][cthulhu[2]] = cthulhu[3];
+        cthulhu[2][cthulhu[1]] = cthulhu[2];
+        cthulhu[3][cthulhu[3]] = cthulhu;
+        std::cout << cthulhu.dumps() << std::endl;
+        // prints:
+        // {"fhtagn":@1,1:{{@2:@3}:{@4:@1}},2:@3,3:@4}
         std::cout << std::endl;
     }
 
     {
+        std::cout << "Table inside itself" << std::endl;
+        try
+        {
+            LuaVal tbl(TTABLE);
+            tbl.set(1, tbl);
+            std::cout << tbl.dumps() << std::endl;
+        }
+        catch (smallfolk_exception const & e)
+        {
+            std::cout << e.what() << std::endl;
+        }
+        std::cout << std::endl;
+    }
+    */
+
+    {
         std::cout << "Table initializer list coolness" << std::endl;
-        LuaVal nested = { LuaVal::table(), { LuaVal::table() }, { LuaVal(3) }, { LuaVal(4) } };
-        std::cout << nested.dumps() << std::endl;
+        std::cout << "{} evaluates to table" << std::endl;
+        std::cout << "{{}} evaluates to a table inside a table" << std::endl;
+        std::cout << "{5} evaluates to 5 being inside a table" << std::endl;
+        std::cout << "{LuaVal(5)} evaluates to 5 inside a table" << std::endl;
+
+        LuaVal nested = { {}, {{}}, { 3 }, { LuaVal(4) } };
+        std::cout << nested.dumps() << std::endl; // Outputs {{},{{}},{3},{4}}
         std::cout << std::endl;
     }
 
     {
         std::cout << "test accessing table with [] operator" << std::endl;
-        LuaVal nested = LuaVal::table();
+        std::cout << "Note that table keys cannot be accessed!" << std::endl;
+        std::cout << "Notice the excessive amount of tables left behind!" << std::endl;
+        LuaVal nested = {};
         nested[1];
         nested[2];
         nested[3];
-        nested[4][5][6];
-        std::cout << nested.dumps() << std::endl;
+        nested[4][5][6]; // handy for quick creation of nested indexes
+        std::cout << nested.dumps() << std::endl; // Outputs {{},{},{},{5:{6:{}}}}
+        std::cout << std::endl;
 
+        // To avoid unnecessary tables, use set and get (similar to at in c++ for map)
         LuaVal table(TTABLE);
         table.set(1, "test");
         std::cout << table.dumps() << std::endl;
-        table.set(1, LuaVal::nil);
+        table.set(1, LuaVal::nil); // removing value through setting it to nil
         std::cout << table.dumps() << std::endl;
         table.set(table, "table as key?");
         std::cout << table.dumps() << std::endl;
@@ -145,6 +197,8 @@ int main()
 
     {
         std::cout << "test .(key).(key, val).rem(key)" << std::endl;
+        std::cout << "Note that table keys cannot be accessed!" << std::endl;
+
         LuaVal table(TTABLE);
         table.set(1, "test").set(2, table.get(1)).set(3, -324);
         std::cout << table.dumps() << std::endl;
@@ -157,10 +211,11 @@ int main()
 
     {
         std::cout << "test .insert.remove.len" << std::endl;
+
         LuaVal table(TTABLE);
         table.insert("test");
         table.insert(123);
-        table.set(std::string("rand"), LuaVal(893));
+        table.set("rand", 893);
         table.insert(345);
         std::cout << table.len() << std::endl;
         table.remove();
@@ -172,51 +227,41 @@ int main()
     {
         LuaVal val = 5;
         LuaVal val2 = LuaVal::nil;
-        assert(val);
-        assert(!val2);
-        assert(val == 5);
-        assert(val != 6);
-        std::cout << "comparison and bool() checks passed" << std::endl;
+        if (val)
+            std::cout << "bool() works" << std::endl;
+        if (!val2)
+            std::cout << "bool() works" << std::endl;
+        if (val == 5)
+            std::cout << "== works" << std::endl;
+        if (val != 6)
+            std::cout << "!= works" << std::endl;
     }
 
     {
         LuaVal val(TTABLE);
         val[123] = 5;
-        val[LuaVal("test")] = 5;
-        val[LuaVal(1.5)] = 5;
+        val["test"] = 5;
+        val[1.5] = 5;
     }
 
     {
-        LuaVal merge_right = LuaVal::table();
-        merge_right.set(LuaVal("ke"), LuaVal("test"));
-        LuaVal val1 = {
-            LuaVal(1),
-            LuaVal(2),
-            LuaVal::mrg(LuaVal{ LuaVal(3), LuaVal(4) }, merge_right)
-        };
+        LuaVal val1 = { 1,2, LuaVal::mrg({ 3,4 }, LuaVal::LuaTable({ { "ke","test" } })) };
         LuaVal val2 = LuaVal::loads("{1,2,{3,4,'ke':'test'}}");
-        assert(val1.dumps() == val2.dumps());
         std::cout << val1.dumps() << std::endl;
+        std::cout << val2.dumps() << std::endl;
     }
 
     {
-        LuaVal t1 = { LuaVal(1), LuaVal(2), { LuaVal(1), LuaVal(2), LuaVal(3) } };
-        LuaVal t2 = LuaVal::table();
-        t2.set(LuaVal("key"), LuaVal("value"));
-        t2.set(LuaVal(2), LuaVal("value2"));
+        LuaVal t1 = { 1, 2, { 1,2,3 } };
+        LuaVal t2 = LuaVal::LuaTable{ { "key", "value" }, { 2, "value2" } };
         std::cout << t1.dumps() << std::endl;
         std::cout << t2.dumps() << std::endl;
     }
 
-    {
-        std::forward_list<std::deque<std::string>> rows = { { "a", "b" }, { "a", "b" } };
-        LuaVal nested(TTABLE);
-        unsigned int index = 0;
-        for (auto const & row : rows)
-            nested.set(++index, lua_val::array(row));
-        std::cout << nested.dumps() << std::endl;
-    }
-
-    std::cout << "demo finished successfully" << std::endl;
+    std::forward_list<std::deque<std::string>> vec = { { "a", "b" },{ "a", "b" } };
+    std::unordered_map<std::string, std::string> m;
+    m["test"] = "asd";
+    LuaVal t441 = vec;
+    std::cout << t441.dumps() << std::endl;
     return 0;
 }

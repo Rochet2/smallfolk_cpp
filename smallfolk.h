@@ -9,6 +9,9 @@
 #include <cstdint>
 #include <utility>
 #include <initializer_list>
+#include <forward_list>
+#include <deque>
+#include <map>
 
 class smallfolk_exception : public std::logic_error
 {
@@ -90,7 +93,7 @@ public:
     LuaVal(const float d) : tag(TNUMBER), tbl_ptr(nullptr), d(d), b(false) {}
     LuaVal(const double d) : tag(TNUMBER), tbl_ptr(nullptr), d(d), b(false) {}
     LuaVal(const std::string & s) : tag(TSTRING), tbl_ptr(nullptr), s(s), d(0), b(false) {}
-    explicit LuaVal(const char * s) : tag(TSTRING), tbl_ptr(nullptr), s(s), d(0), b(false) {}
+    LuaVal(const char * s) : tag(TSTRING), tbl_ptr(nullptr), s(s), d(0), b(false) {}
     LuaVal(const bool b) : tag(TBOOL), tbl_ptr(nullptr), d(0), b(b) {}
     LuaVal(LuaVal const & val) : tag(val.tag), tbl_ptr(val.tag == TTABLE ? val.tbl_ptr ? new LuaTable(*val.tbl_ptr) : new LuaTable() : nullptr), s(val.s), d(val.d), b(val.b) {}
     LuaVal(LuaVal && val) noexcept : tag(std::move(val.tag)), tbl_ptr(std::move(val.tbl_ptr)), s(std::move(val.s)), d(std::move(val.d)), b(std::move(val.b))
@@ -99,6 +102,32 @@ public:
             val.tbl_ptr.reset(new LuaTable());
     }
     LuaVal(std::initializer_list<LuaVal> const & l);
+
+    template<typename T>
+    LuaVal(std::initializer_list<T> const & l) : tag(TTABLE), tbl_ptr(new LuaTable()), d(0), b(false)
+    {
+        InitializeSequence(l);
+    }
+
+    LuaVal(LuaTable const & l) : tag(TTABLE), tbl_ptr(new LuaTable(l)), d(0), b(false) {}
+
+    template<typename T>
+    LuaVal(std::forward_list<T> const & l) : tag(TTABLE), tbl_ptr(new LuaTable()), d(0), b(false)
+    {
+        InitializeSequence(l);
+    }
+
+    template<typename T>
+    LuaVal(std::deque<T> const & l) : tag(TTABLE), tbl_ptr(new LuaTable()), d(0), b(false)
+    {
+        InitializeSequence(l);
+    }
+
+    template<typename K, typename V>
+    LuaVal(std::unordered_map<K, V> const & l) : tag(TTABLE), tbl_ptr(new LuaTable()), d(0), b(false)
+    {
+        InitializeMap(l);
+    }
 
     static LuaVal table() { return LuaVal(TTABLE); }
 
@@ -128,6 +157,8 @@ public:
     LuaVal const & get(LuaVal const & k) const;
     LuaVal const & get(std::string const & k) const;
     LuaVal const & get(int k) const;
+    LuaVal const & get(char const * k) const { return get(std::string(k)); }
+    LuaVal const & get(double k) const { return get(LuaVal(k)); }
 
     // nullptr when the key is missing; otherwise points at the stored value (including nil).
     LuaVal const * try_get(LuaVal const & k) const;
@@ -153,10 +184,17 @@ public:
     LuaVal & set(std::string const & k, LuaVal && v);
     LuaVal & set(std::string const & k, std::string const & v) { return set(k, LuaVal(v)); }
     LuaVal & set(std::string const & k, char const * v) { return set(k, LuaVal(v)); }
+    LuaVal & set(char const * k, LuaVal const & v) { return set(std::string(k), v); }
+    LuaVal & set(char const * k, LuaVal && v) { return set(std::string(k), std::move(v)); }
+    LuaVal & set(char const * k, int v) { return set(std::string(k), LuaVal(v)); }
+    LuaVal & set(char const * k, double v) { return set(std::string(k), LuaVal(v)); }
+    LuaVal & set(char const * k, char const * v) { return set(std::string(k), LuaVal(v)); }
     LuaVal & set(int k, LuaVal const & v);
     LuaVal & set(int k, LuaVal && v);
     LuaVal & set(int k, std::string const & v) { return set(k, LuaVal(v)); }
     LuaVal & set(int k, char const * v) { return set(k, LuaVal(v)); }
+    LuaVal & set(double k, LuaVal const & v) { return set(LuaVal(k), v); }
+    LuaVal & set(double k, LuaVal && v) { return set(LuaVal(k), std::move(v)); }
 
     LuaVal & setignore(LuaVal const & k, LuaVal const & v);
     LuaVal & setignore(LuaVal const & k, LuaVal && v);
@@ -215,6 +253,34 @@ public:
 private:
 
     void InitializeSequence(std::initializer_list<LuaVal> const & l);
+
+    template<typename T>
+    void InitializeSequence(T const & l)
+    {
+        LuaTable & tbl = *tbl_ptr;
+        unsigned int i = 0;
+        for (auto const & v : l)
+        {
+            LuaVal vv(v);
+            if (vv.isnil())
+                ++i;
+            else
+                tbl[++i] = std::move(vv);
+        }
+    }
+
+    template<typename T>
+    void InitializeMap(T const & l)
+    {
+        LuaTable & tbl = *tbl_ptr;
+        for (auto const & e : l)
+        {
+            LuaVal k(e.first);
+            LuaVal v(e.second);
+            if (!k.isnil() && !v.isnil())
+                tbl[std::move(k)] = std::move(v);
+        }
+    }
 
     friend size_t LuaValHash(LuaVal const & v);
 

@@ -136,7 +136,7 @@ void LuaVal::InitializeSequence(std::initializer_list<LuaVal> const & l)
         if (vv.isnil())
             ++i;
         else
-            set(++i, std::move(vv));
+            set(static_cast<int>(++i), std::move(vv));
     }
 }
 
@@ -1027,7 +1027,7 @@ LuaVal Serializer::expect_object(std::string const & string, size_t & i, Seriali
             }
             else
             {
-                nt.set(j, k);
+                nt.set(static_cast<int>(j), k);
                 ++j;
             }
             char head = strat(string, i);

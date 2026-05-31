@@ -24,7 +24,7 @@ LuaVal from_sequence(T const & items)
         if (converted.isnil())
             ++index;
         else
-            value.set(++index, std::move(converted));
+            value.set(static_cast<int>(++index), std::move(converted));
     }
     return value;
 }
