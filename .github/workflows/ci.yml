@@ -36,3 +36,27 @@ jobs:
 
       - name: Test
         run: ${{ matrix.test }}
+
+  static-analysis:
+    runs-on: ubuntu-latest
+
+    steps:
+      - uses: actions/checkout@v6
+
+      - name: Install analysis tools
+        run: sudo apt-get update && sudo apt-get install -y clang-tidy cppcheck
+
+      - name: Configure
+        run: cmake -B build -DSMALLFOLK_BUILD_TESTS=ON -DCMAKE_BUILD_TYPE=Release -DCMAKE_EXPORT_COMPILE_COMMANDS=ON
+
+      - name: Build library
+        run: cmake --build build --config Release --target smallfolk
+
+      - name: cppcheck
+        run: cmake --build build --target smallfolk_cppcheck
+
+      - name: clang-tidy
+        run: cmake --build build --target smallfolk_clang_tidy
+
+      - name: Test
+        run: ctest --test-dir build -C Release --output-on-failure

@@ -472,6 +472,153 @@ static void test_equality_and_bool()
     expect_true(!static_cast<bool>(false), "false is falsy");
 }
 
+static void test_nil_bool_and_type()
+{
+    std::string err;
+    LuaVal loaded = LuaVal::loads("{t,f}", &err);
+    expect_true(err.empty(), "bool literals parse");
+    expect_true(loaded.get(1).boolean(), "true round-trip");
+    expect_true(!loaded.get(2).boolean(), "false round-trip");
+
+    bool value = false;
+    expect_true(LuaVal(true).try_as_bool(value) && value, "try_as_bool on true");
+    expect_true(LuaVal(false).try_as_bool(value) && !value, "try_as_bool on false");
+    expect_true(!LuaVal(1).try_as_bool(value), "try_as_bool rejects number");
+
+    expect_equal(LuaVal::type(TTABLE), "table", "type tag string for table");
+    expect_equal(LuaVal(5).type(), "number", "instance type string");
+}
+
+static void test_set_nil_vs_bracket_nil()
+{
+    LuaVal table = LuaVal::table();
+    table.set(std::string("removed"), std::string("x"));
+    table.set(std::string("removed"), LuaVal::nil);
+    expect_true(!table.has(std::string("removed")), "set(nil) erases key");
+
+    table["stored"] = LuaVal::nil;
+    expect_true(table.has(std::string("stored")), "bracket nil stores explicit nil entry");
+    expect_true(table.get(std::string("stored")).isnil(), "bracket nil value is nil");
+}
+
+static void test_setignore()
+{
+    LuaVal table = LuaVal::table();
+    table.set(std::string("keep"), std::string("first"));
+    table.setignore(std::string("keep"), std::string("second"));
+    expect_true(table.get(std::string("keep")).str() == "first", "setignore does not overwrite");
+
+    table.setignore(std::string("new"), std::string("added"));
+    expect_true(table.get(std::string("new")).str() == "added", "setignore inserts missing key");
+
+    table.setignore(std::string("skip"), LuaVal::nil);
+    expect_true(!table.has(std::string("skip")), "setignore ignores nil values");
+}
+
+static void test_copy_semantics()
+{
+    LuaVal original = LuaVal::table();
+    original.set(std::string("x"), 1);
+    LuaVal copy = original;
+    copy.set(std::string("x"), 2);
+    expect_true(original.get(std::string("x")).num() == 1.0, "copy is deep for tables");
+
+    LuaVal assigned = LuaVal::table();
+    assigned = original;
+    assigned.set(std::string("x"), 3);
+    expect_true(original.get(std::string("x")).num() == 1.0, "assignment copy is deep");
+}
+
+static void test_insert_remove_positions()
+{
+    LuaVal table = LuaVal::table();
+    table.set(1, std::string("a")).set(2, std::string("b")).set(3, std::string("c"));
+    table.insert(LuaVal("middle"), LuaVal(2));
+    expect_true(table.get(2).str() == "middle", "insert shifts sequence");
+    expect_true(table.get(3).str() == "b", "insert preserves trailing values");
+    expect_true(table.len() == 4, "insert grows sequence length");
+
+    table.remove(2);
+    expect_true(table.get(2).str() == "b", "remove shifts sequence back");
+    expect_true(table.len() == 3, "remove shrinks sequence length");
+}
+
+static void test_load_limits_global()
+{
+    LoadLimits saved = LuaVal::get_load_limits();
+    LoadLimits custom;
+    custom.max_input_size = 64;
+    LuaVal::set_load_limits(custom);
+    expect_true(LuaVal::get_load_limits().max_input_size == 64, "set_load_limits updates global default");
+
+    std::string err;
+    expect_load_error(std::string(65, 'x'), LuaVal::get_load_limits(), "global default applies to loads");
+    LuaVal::set_load_limits(saved);
+}
+
+static void test_untrusted_load_limits()
+{
+    LoadLimits limits = LuaVal::untrusted_load_limits();
+    expect_true(limits.max_input_size < LuaVal::default_load_limits().max_input_size, "untrusted input cap is tighter");
+    expect_true(limits.reject_non_finite_numbers, "untrusted rejects non-finite numbers");
+}
+
+static void test_single_quoted_strings()
+{
+    std::string err;
+    LuaVal loaded = LuaVal::loads("'it''s fine'", &err);
+    expect_true(err.empty(), "single-quoted string loads");
+    expect_equal(loaded.str(), "it's fine", "single-quoted apostrophe unescapes");
+
+    LuaVal table = LuaVal::table();
+    table.set(std::string("key"), std::string("value"));
+    expect_true(LuaVal::loads(table.dumps(), &err).has(std::string("key")), "single-quoted key round-trip");
+}
+
+static void test_path_errors()
+{
+    LuaVal table = LuaVal::table();
+    try
+    {
+        table.set_path({}, std::string("x"));
+        expect_true(false, "set_path empty path throws");
+    }
+    catch (smallfolk_exception const &)
+    {
+    }
+
+    try
+    {
+        table.erase_path({});
+        expect_true(false, "erase_path empty path throws");
+    }
+    catch (smallfolk_exception const &)
+    {
+    }
+
+    table.set(std::string("mid"), 42);
+    try
+    {
+        table.set_path({ LuaVal("mid"), LuaVal("leaf"), LuaVal("x") }, std::string("bad"));
+        expect_true(false, "set_path through scalar throws");
+    }
+    catch (smallfolk_exception const & e)
+    {
+        expect_true(std::string(e.what()).find("not a table at $.mid") != std::string::npos, "set_path scalar path message");
+    }
+}
+
+static void test_empty_table_round_trip()
+{
+    expect_equal(LuaVal::table().dumps(), "{}", "empty table serializes");
+
+    std::string err;
+    LuaVal loaded = LuaVal::loads("{}", &err);
+    expect_true(err.empty(), "empty table loads");
+    expect_true(loaded.istable(), "empty table loads to table");
+    expect_true(loaded.len() == 0, "empty table stays empty");
+}
+
 int main()
 {
     std::cout << "Running smallfolk tests..." << std::endl;
@@ -490,6 +637,16 @@ int main()
     test_new_api();
     test_path_api();
     test_equality_and_bool();
+    test_nil_bool_and_type();
+    test_set_nil_vs_bracket_nil();
+    test_setignore();
+    test_copy_semantics();
+    test_insert_remove_positions();
+    test_load_limits_global();
+    test_untrusted_load_limits();
+    test_single_quoted_strings();
+    test_path_errors();
+    test_empty_table_round_trip();
 
     if (failures == 0)
     {

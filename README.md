@@ -139,6 +139,15 @@ Tune limits for your deployment. See [ASSUMPTIONS.md](ASSUMPTIONS.md) for what i
 
 Automated tests live in `tests/test_smallfolk.cpp` and `tests/test_schema.cpp`, run via the `smallfolk_tests` and `smallfolk_schema_tests` targets. The original interactive walkthrough from `main.cpp` now lives in `examples/demo.cpp` as the `smallfolk_demo` target (also run by CTest when `-DSMALLFOLK_BUILD_EXAMPLES=ON`, default). The demo uses a `DEMO_CHECK` macro instead of `assert()` so runtime verification still runs in Release/NDEBUG builds.
 
+Static analysis (Linux CI and local when tools are installed):
+
+```bash
+cmake -B build -DCMAKE_EXPORT_COMPILE_COMMANDS=ON
+cmake --build build --target smallfolk_static_analysis
+```
+
+This runs **cppcheck** and **clang-tidy** on the library sources when available. Optional: `-DSMALLFOLK_ENABLE_CLANG_TIDY=ON` attaches clang-tidy to normal library builds.
+
 The code has also been in use with a server-client C++-Lua communication system called AIO through which the API has been made more usable and critical issues have been addressed.
 
 - [https://github.com/Rochet2/AIO](https://github.com/Rochet2/AIO)
