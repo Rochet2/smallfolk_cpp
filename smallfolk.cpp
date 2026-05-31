@@ -9,6 +9,7 @@
 #include <stdarg.h> // va_start
 #include <functional> // std::hash
 #include <mutex>
+#include <vector>
 
 namespace
 {
@@ -1006,6 +1007,7 @@ LuaVal Serializer::expect_object(std::string const & string, size_t & i, Seriali
     case '{':
     {
         ParseContext::DepthGuard depth_guard(ctx);
+        (void)depth_guard;
         LuaVal nt(TTABLE);
         ctx.on_value_created();
         unsigned int j = 1;

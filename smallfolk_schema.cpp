@@ -190,6 +190,7 @@ bool CompiledSchema::validate_impl(
         explicit DepthPop(ValidateContext & c) : ctx(c) {}
         ~DepthPop() { --ctx.depth; }
     } depth_pop(ctx);
+    (void)depth_pop;
 
     switch (node.kind)
     {
