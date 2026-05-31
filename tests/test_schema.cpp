@@ -342,6 +342,83 @@ static void test_loads_validated_or_throw()
     }
 }
 
+static void test_one_of_initializer_list()
+{
+    Schema const schema = schema::one_of({ schema::number(), schema::boolean() });
+    expect_true(validate(LuaVal(3), schema), "one_of initializer_list accepts number");
+    expect_true(validate(LuaVal(true), schema), "one_of initializer_list accepts bool");
+    expect_false(validate(LuaVal("x"), schema), "one_of initializer_list rejects string");
+}
+
+static Schema::Field loose_object_fields[] = {
+    { "name", &string_schema, true },
+    { "hp", &bounded_number_schema, true },
+};
+
+static Schema const loose_object_schema = [] {
+    Schema s;
+    s.kind = SchemaKind::Object;
+    s.fields = loose_object_fields;
+    s.field_count = 2;
+    s.allow_extra_keys = true;
+    return s;
+}();
+
+static void test_object_allows_extra_when_configured()
+{
+    LuaVal value = LuaVal::table();
+    value.set(std::string("name"), LuaVal("Ada"));
+    value.set(std::string("hp"), LuaVal(40));
+    value.set(std::string("note"), LuaVal("ok"));
+    expect_true(validate(value, loose_object_schema), "object with allow_extra_keys accepts unknown fields");
+}
+
+static void test_validate_depth_limit()
+{
+    CompiledSchema compiled(schema::array_of(schema::array_of(schema::number())));
+    ValidateLimits tight;
+    tight.max_validation_depth = 1;
+
+    LuaVal nested = LuaVal::table();
+    nested.set(1, LuaVal(1));
+    LuaVal outer = LuaVal::table();
+    outer.set(1, nested);
+
+    std::string err;
+    expect_false(compiled.validate(outer, tight, &err), "validation depth limit rejects nested array");
+    expect_contains(err, "depth limit", "validation depth limit error message");
+}
+
+static void test_loads_validated_with_limits()
+{
+    CompiledSchema compiled(player_schema);
+    LoadLimits load_limits = LuaVal::untrusted_load_limits();
+    ValidateLimits validate_limits = untrusted_validate_limits();
+
+    std::string err;
+    LuaVal value = loads_validated(
+        "{'name':'Ada','hp':40}",
+        compiled,
+        load_limits,
+        validate_limits,
+        &err);
+    expect_true(err.empty(), "loads_validated accepts payload with explicit limits");
+    expect_true(value.get(std::string("name")).str() == "Ada", "loads_validated limits overload parses value");
+}
+
+static void test_optional_object_field()
+{
+    LuaVal with_title = LuaVal::table();
+    with_title.set(std::string("name"), LuaVal("Ada"));
+    with_title.set(std::string("hp"), LuaVal(50));
+    with_title.set(std::string("title"), LuaVal("Engineer"));
+    expect_true(validate(with_title, player_schema), "optional field may be present");
+
+    LuaVal without_title = with_title;
+    without_title.erase(std::string("title"));
+    expect_true(validate(without_title, player_schema), "optional field may be absent");
+}
+
 int main()
 {
     std::cout << "Running schema tests..." << std::endl;
@@ -363,6 +440,11 @@ int main()
     test_validation_limits();
     test_loads_validated();
     test_loads_validated_or_throw();
+    test_one_of_initializer_list();
+    test_object_allows_extra_when_configured();
+    test_validate_depth_limit();
+    test_loads_validated_with_limits();
+    test_optional_object_field();
 
     if (failures == 0)
     {
