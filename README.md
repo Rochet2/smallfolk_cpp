@@ -11,10 +11,43 @@ Due to implementation difficulties and security some features of gvx/Smallfolk a
 
 You use, distribute and extend Smallfolk_cpp under the terms of the MIT license.
 
+See [ASSUMPTIONS.md](ASSUMPTIONS.md) for documented behavioral assumptions (copy semantics, comparison, limits, and security).
+
+## Add to your project
+
+**CMake (recommended)** — add this repository as a subdirectory or fetch it, then link the library target:
+
+```cmake
+add_subdirectory(path/to/smallfolk_cpp)
+
+add_executable(my_app main.cpp)
+target_link_libraries(my_app PRIVATE smallfolk_cpp::smallfolk)
+```
+
+Build and test from the repository root:
+
+```bash
+cmake -B build -DSMALLFOLK_BUILD_TESTS=ON -DSMALLFOLK_BUILD_BENCHMARK=ON
+cmake --build build
+ctest --test-dir build --output-on-failure   # if you enable CTest
+./build/smallfolk_tests
+./build/smallfolk_benchmark
+```
+
+**Manual integration** — copy `smallfolk.h` and `smallfolk.cpp` into your tree and compile them as a static library or directly into your target. The library requires C++11 and has no other dependencies.
+
+**Install** — after building:
+
+```bash
+cmake --install build --prefix /path/to/prefix
+```
+
+This installs `smallfolk.h`, the `smallfolk` library, and a CMake export file under `lib/cmake/smallfolk_cpp/`.
+
 ## Usage
 
 ```C++
-#include smallfolk.h
+#include "smallfolk.h"
 
 // create a lua table and set some values to it
 LuaVal table = LuaVal::table();
@@ -41,15 +74,26 @@ std::cout << deserialized[67.5].num() << std::endl;
 
 ## Fast
 
-Its C++, duh!?
+Run the included benchmark to measure your machine (build with `-DSMALLFOLK_BUILD_BENCHMARK=ON`):
 
-Some poor benchmarking shows that plain serializing takes ~0.01ms. If creating, serializing and destroying created objects ~0.025ms. Deserializing takes ~0.05ms when destroying the created objects as well.
-This is of course completely different depending on what data you serialize and deserialize.
-In general it would seem that deserializing is ~50% slower.
+```bash
+./build/smallfolk_benchmark
+```
 
-To put this into any kind of perspective, here is the print of the serialized data:
+Example output on a typical desktop (10,000 iterations, sample payload shown in the benchmark):
+
+```
+serialize avg:   ~0.03 ms
+deserialize avg: ~0.05 ms
+round-trip avg:  ~0.12 ms
+```
+
+Older informal measurements reported ~0.01 ms serialize and ~0.05 ms deserialize for small payloads. Results vary widely by data shape, allocator, and compiler.
+
+The benchmark serializes this sample payload:
+
 ```lua
-{t,"somestring",123.456,t:-678,"test":123.45600128173828,f:268435455,"subtable":{1,2,3}}
+{t,"somestring",123.456,t,{"t":-678,"test":123.45600128173828,"f":268435455,"subtable":{1,2,3}}}
 ```
 
 ## Table cycles
@@ -82,12 +126,15 @@ From original smallfolk
 
 ## Security
 
-I cannot guarantee that this code is secure. All I can give is that I have attempted to make it safe and implemented exceptions best I know to handle unexpected situations.
+Deserialization accepts configurable limits via `LoadLimits` (see reference below). Defaults cap total input size, per-string length, nesting depth, and total parsed value count. Trailing input after a valid value is rejected by default.
+
+Tune limits for your deployment. See [ASSUMPTIONS.md](ASSUMPTIONS.md) for what is and is not guaranteed.
 
 ## Tested
 
-All tests can be seen in the main.cpp provided.
-The code has been in use with a server-client C++-Lua communication system called AIO through which the API has been made more usable and critical issues have been addressed.
+Automated tests live in `tests/test_smallfolk.cpp` and run via the `smallfolk_tests` target.
+
+The code has also been in use with a server-client C++-Lua communication system called AIO through which the API has been made more usable and critical issues have been addressed.
 - https://github.com/Rochet2/AIO
 - https://github.com/Rochet2/TrinityCore/tree/c_aio
 - https://github.com/SaiFi0102/TrinityCore/tree/CAIO-3.3.5
@@ -113,8 +160,31 @@ Serializing happens by calling the member function `std::string LuaVal::dumps(st
 This function does not throw.
 
 ### deserializing
-Deserializing happens by calling the function `static LuaVal LuaVal::loads(std::string const & string, std::string* errmsg = nullptr)`. When an error occurs with the deserialization a LuaVal representing a nil is returned and if errmsg points to a string then it is filled with the error message.
+Deserializing happens by calling `static LuaVal LuaVal::loads(std::string const & string, std::string* errmsg = nullptr)` or the overload that accepts an explicit `LoadLimits` object. When an error occurs with the deserialization a LuaVal representing a nil is returned and if errmsg points to a string then it is filled with the error message.
 This function does not throw.
+
+### LoadLimits
+Configure deserialization bounds with `LoadLimits`. Use `LuaVal::set_load_limits()` for process-wide defaults, or pass limits per call to `loads()`.
+
+```C++
+LoadLimits limits = LuaVal::default_load_limits();
+limits.max_string_length = 65536;
+limits.max_nesting_depth = 64;
+LuaVal::set_load_limits(limits);
+
+std::string err;
+LuaVal value = LuaVal::loads(payload, &err);
+```
+
+Fields:
+
+| Field | Default | Purpose |
+|-------|---------|---------|
+| `max_input_size` | 16 MiB | Reject inputs larger than this |
+| `max_string_length` | 1 MiB | Reject quoted string contents longer than this |
+| `max_nesting_depth` | 256 | Reject tables nested deeper than this |
+| `max_value_count` | 100000 | Reject documents with more parsed values |
+| `require_consumed_input` | `true` | Reject trailing bytes after the root value |
 
 ### LuaVal
 LuaVal is a type used to represent lua values in C++. LuaVal has a range of functions to access the underlying values and to construct LuaVal from different values. LuaVal is the input for serialization and output of deserialization.
@@ -133,6 +203,7 @@ LuaVal s("a string");
 LuaVal d(123.456);
 LuaVal f(123.456f);
 LuaVal i(-678);
+LuaVal i64(static_cast<int64_t>(9007199254740991LL));
 LuaVal u(0xFFFFFFF);
 LuaVal t; // defaults to table
 LuaVal t2 = LuaVal::table();
@@ -186,9 +257,11 @@ All of these may throw if LuaVal or tag is not valid for some reason (which shou
 
 ### operators
 The LuaVal class offers a few operators.  
-You can use == and != operators to compare, however different table objects are copies so they are never equal unless you actually compare with the same object.
+You can use == and != operators to compare scalar values by value. **Tables compare by internal identity (pointer), not structural contents** — two tables with the same data are unequal after copying. For content comparison, compare `dumps()` output or implement a deep `equiv()` helper (not built in).
 LuaVal has the bool operator implemented so that nil and false will return false if a LuaVal is in a conditional statement. The assignment operator is also implemented and works as you would expect.
 May throw if LuaVal is not valid for some reason (which should not be possible).
+
+**`operator[]` auto-vivification:** reading a missing key inserts an empty table. Prefer `get()`, `has()`, and `set()` when building maps without stray entries. Avoid chaining `a[b][c]` in one expression — intermediate references can be invalidated if a nested table rehashes; use `set()`/`get()` or build subtables locally first.
 
 ### isvalue
 There is a collection of member functions you can use to check whether the object is really of some type.
@@ -213,7 +286,7 @@ luaval.tbl()
 
 ### table access
 There are several methods for accessing and editing a table.
-**Note Inserted values will be deep copies in all cases.**
+**Note Inserted values are deep-copied via const lvalue setters. Use move overloads (`set(key, std::move(value))`, `insert(std::move(value))`) to avoid redundant copies of large tables.**
 
 The way of accessing and inserting map elements are the get and set member functions `luaval.get(key)`, `luaval.set(key, value)`.
 The function `set` returns the accessed table itself, so you can chain it to set multiple values.
