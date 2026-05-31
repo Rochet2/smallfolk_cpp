@@ -4,7 +4,7 @@ project(smallfolk_cpp VERSION 1.0.0 LANGUAGES CXX)
 option(SMALLFOLK_BUILD_TESTS "Build the test runner" ON)
 option(SMALLFOLK_BUILD_BENCHMARK "Build the benchmark runner" ON)
 
-add_library(smallfolk smallfolk.cpp)
+add_library(smallfolk smallfolk.cpp smallfolk_schema.cpp)
 add_library(smallfolk_cpp::smallfolk ALIAS smallfolk)
 target_include_directories(smallfolk PUBLIC
     "$<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}>"
@@ -29,8 +29,15 @@ if(SMALLFOLK_BUILD_TESTS)
     add_executable(smallfolk_tests tests/test_smallfolk.cpp)
     target_link_libraries(smallfolk_tests PRIVATE smallfolk)
     add_test(NAME smallfolk_tests COMMAND smallfolk_tests)
+
+    add_executable(smallfolk_schema_tests tests/test_schema.cpp)
+    target_link_libraries(smallfolk_schema_tests PRIVATE smallfolk)
+    add_test(NAME smallfolk_schema_tests COMMAND smallfolk_schema_tests)
     if(NOT MSVC)
         target_compile_options(smallfolk_tests PRIVATE
+            -Wall -Wextra -Werror -Wno-long-long -pedantic
+        )
+        target_compile_options(smallfolk_schema_tests PRIVATE
             -Wall -Wextra -Werror -Wno-long-long -pedantic
         )
     endif()
@@ -52,7 +59,7 @@ install(TARGETS smallfolk EXPORT smallfolk_cppTargets
     LIBRARY DESTINATION ${CMAKE_INSTALL_LIBDIR}
     RUNTIME DESTINATION ${CMAKE_INSTALL_BINDIR}
 )
-install(FILES smallfolk.h DESTINATION ${CMAKE_INSTALL_INCLUDEDIR})
+install(FILES smallfolk.h smallfolk_convert.h smallfolk_schema.h DESTINATION ${CMAKE_INSTALL_INCLUDEDIR})
 install(EXPORT smallfolk_cppTargets
     FILE smallfolk_cppTargets.cmake
     NAMESPACE smallfolk_cpp::

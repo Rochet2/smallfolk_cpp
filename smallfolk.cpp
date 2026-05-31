@@ -1,5 +1,6 @@
 #include "smallfolk.h"
 #include <map>
+#include <climits>
 #include <iomanip> // std::setprecision
 #include <sstream> // std::stringstream
 #include <cmath> // std::floor, std::isfinite
@@ -7,10 +8,18 @@
 #include <cstdio> // std::snprintf
 #include <stdarg.h> // va_start
 #include <functional> // std::hash
+#include <mutex>
 
 namespace
 {
     LoadLimits g_load_limits;
+    std::mutex g_load_limits_mutex;
+
+    LoadLimits read_load_limits()
+    {
+        std::lock_guard<std::mutex> lock(g_load_limits_mutex);
+        return g_load_limits;
+    }
 
     struct ParseContext
     {
@@ -85,17 +94,85 @@ LoadLimits const & LuaVal::default_load_limits()
     return defaults;
 }
 
+LoadLimits LuaVal::untrusted_load_limits()
+{
+    LoadLimits limits;
+    limits.max_input_size = 256 * 1024;
+    limits.max_string_length = 64 * 1024;
+    limits.max_nesting_depth = 64;
+    limits.max_value_count = 10000;
+    limits.max_table_entries = 10000;
+    limits.require_consumed_input = true;
+    limits.reject_non_finite_numbers = true;
+    return limits;
+}
+
 LoadLimits LuaVal::get_load_limits()
 {
-    return g_load_limits;
+    return read_load_limits();
 }
 
 void LuaVal::set_load_limits(LoadLimits limits)
 {
+    std::lock_guard<std::mutex> lock(g_load_limits_mutex);
     g_load_limits = limits;
 }
 
 LuaVal const LuaVal::nil(TNIL);
+
+LuaVal::LuaVal(std::initializer_list<LuaVal> const & l)
+    : tag(TTABLE), tbl_ptr(new LuaTable()), d(0), b(false)
+{
+    InitializeSequence(l);
+}
+
+void LuaVal::InitializeSequence(std::initializer_list<LuaVal> const & l)
+{
+    unsigned int i = 0;
+    for (auto const & v : l)
+    {
+        LuaVal vv(v);
+        if (vv.isnil())
+            ++i;
+        else
+            set(++i, std::move(vv));
+    }
+}
+
+LuaVal lua_val::map(std::initializer_list<std::pair<LuaVal, LuaVal>> const & entries)
+{
+    LuaVal value(TTABLE);
+    for (auto const & entry : entries)
+        value.set(entry.first, entry.second);
+    return value;
+}
+
+LuaVal LuaVal::merge(LuaVal const & l, LuaVal const & r)
+{
+    LuaVal result = l;
+    for (auto const & entry : r.tbl())
+        result.set(entry.first, entry.second);
+    return result;
+}
+
+LuaVal LuaVal::merge(LuaVal && l, LuaVal && r)
+{
+    return merge(std::move(l), static_cast<LuaVal const &>(r));
+}
+
+LuaVal LuaVal::merge(LuaVal && l, LuaVal const & r)
+{
+    for (auto const & entry : r.tbl())
+        l.set(entry.first, entry.second);
+    return std::move(l);
+}
+
+LuaVal LuaVal::merge(LuaVal const & l, LuaVal && r)
+{
+    for (auto const & entry : l.tbl())
+        r.setignore(entry.first, entry.second);
+    return std::move(r);
+}
 
 std::string LuaVal::tostring() const
 {
@@ -169,6 +246,85 @@ LuaVal const & LuaVal::get(LuaVal const & k) const
     return nil;
 }
 
+LuaVal const & LuaVal::get(std::string const & k) const
+{
+    return get(LuaVal(k));
+}
+
+LuaVal const & LuaVal::get(int k) const
+{
+    return get(LuaVal(k));
+}
+
+LuaVal const * LuaVal::try_get(LuaVal const & k) const
+{
+    if (!istable())
+        throw smallfolk_exception("using try_get on non table object");
+    if (k.isnil())
+        throw smallfolk_exception("using try_get with nil key");
+    LuaTable const & tbl = (*tbl_ptr);
+    auto it = tbl.find(k);
+    if (it == tbl.end())
+        return nullptr;
+    return &it->second;
+}
+
+LuaVal const * LuaVal::try_get(std::string const & k) const
+{
+    return try_get(LuaVal(k));
+}
+
+LuaVal const * LuaVal::try_get(int k) const
+{
+    return try_get(LuaVal(k));
+}
+
+LuaVal & LuaVal::at(LuaVal const & k)
+{
+    if (!istable())
+        throw smallfolk_exception("using at on non table object");
+    if (k.isnil())
+        throw smallfolk_exception("using at with nil key");
+    LuaTable & tbl = (*tbl_ptr);
+    auto it = tbl.find(k);
+    if (it == tbl.end())
+        throw smallfolk_exception("at: key not found");
+    return it->second;
+}
+
+LuaVal const & LuaVal::at(LuaVal const & k) const
+{
+    if (!istable())
+        throw smallfolk_exception("using at on non table object");
+    if (k.isnil())
+        throw smallfolk_exception("using at with nil key");
+    LuaTable const & tbl = (*tbl_ptr);
+    auto it = tbl.find(k);
+    if (it == tbl.end())
+        throw smallfolk_exception("at: key not found");
+    return it->second;
+}
+
+LuaVal & LuaVal::at(std::string const & k)
+{
+    return at(LuaVal(k));
+}
+
+LuaVal const & LuaVal::at(std::string const & k) const
+{
+    return at(LuaVal(k));
+}
+
+LuaVal & LuaVal::at(int k)
+{
+    return at(LuaVal(k));
+}
+
+LuaVal const & LuaVal::at(int k) const
+{
+    return at(LuaVal(k));
+}
+
 bool LuaVal::has(LuaVal const & k) const
 {
     if (!istable())
@@ -178,6 +334,16 @@ bool LuaVal::has(LuaVal const & k) const
     LuaTable & tbl = (*tbl_ptr);
     auto it = tbl.find(k);
     return it != tbl.end();
+}
+
+bool LuaVal::has(std::string const & k) const
+{
+    return has(LuaVal(k));
+}
+
+bool LuaVal::has(int k) const
+{
+    return has(LuaVal(k));
 }
 
 LuaVal & LuaVal::set(LuaVal const & k, LuaVal const & v)
@@ -208,6 +374,26 @@ LuaVal & LuaVal::set(LuaVal const & k, LuaVal && v)
     return *this;
 }
 
+LuaVal & LuaVal::set(std::string const & k, LuaVal const & v)
+{
+    return set(LuaVal(k), v);
+}
+
+LuaVal & LuaVal::set(std::string const & k, LuaVal && v)
+{
+    return set(LuaVal(k), std::move(v));
+}
+
+LuaVal & LuaVal::set(int k, LuaVal const & v)
+{
+    return set(LuaVal(k), v);
+}
+
+LuaVal & LuaVal::set(int k, LuaVal && v)
+{
+    return set(LuaVal(k), std::move(v));
+}
+
 LuaVal & LuaVal::setignore(LuaVal const & k, LuaVal const & v)
 {
     if (!istable())
@@ -234,12 +420,12 @@ LuaVal & LuaVal::setignore(LuaVal const & k, LuaVal && v)
     return *this;
 }
 
-LuaVal & LuaVal::rem(LuaVal const & k)
+LuaVal & LuaVal::erase(LuaVal const & k)
 {
     if (!istable())
-        throw smallfolk_exception("using rem on non table object");
+        throw smallfolk_exception("using erase on non table object");
     if (k.isnil())
-        throw smallfolk_exception("using rem with nil key");
+        throw smallfolk_exception("using erase with nil key");
     LuaTable & tbl = (*tbl_ptr);
     tbl.erase(k);
     return *this;
@@ -251,13 +437,15 @@ unsigned int LuaVal::len() const
         throw smallfolk_exception("using len on non table object");
     LuaTable & tbl = (*tbl_ptr);
     unsigned int i = 0;
-    while (++i)
+    for (;;)
     {
+        if (i == UINT_MAX)
+            return i;
+        ++i;
         auto it = tbl.find(i);
         if (it == tbl.end() || it->second.isnil())
-            break;
+            return i - 1;
     }
-    return i - 1;
 }
 
 LuaVal & LuaVal::insert(LuaVal const & v, LuaVal const & pos)
@@ -341,6 +529,58 @@ LuaVal & LuaVal::remove(LuaVal const & pos)
     return *this;
 }
 
+double LuaVal::num() const
+{
+    if (!isnumber())
+        throw smallfolk_exception("using num on non number object");
+    return d;
+}
+
+bool LuaVal::boolean() const
+{
+    if (!isbool())
+        throw smallfolk_exception("using boolean on non bool object");
+    return b;
+}
+
+std::string const & LuaVal::str() const
+{
+    if (!isstring())
+        throw smallfolk_exception("using str on non string object");
+    return s;
+}
+
+LuaVal::LuaTable const & LuaVal::tbl() const
+{
+    if (!istable() || !tbl_ptr)
+        throw smallfolk_exception("using tbl on non table object");
+    return *tbl_ptr;
+}
+
+bool LuaVal::try_as_number(double & out) const
+{
+    if (!isnumber())
+        return false;
+    out = d;
+    return true;
+}
+
+bool LuaVal::try_as_string(std::string const *& out) const
+{
+    if (!isstring())
+        return false;
+    out = &s;
+    return true;
+}
+
+bool LuaVal::try_as_bool(bool & out) const
+{
+    if (!isbool())
+        return false;
+    out = b;
+    return true;
+}
+
 std::string LuaVal::type(LuaTypeTag tag)
 {
     switch (tag)
@@ -373,14 +613,23 @@ std::string LuaVal::dumps(std::string * errmsg) const
     catch (smallfolk_exception const & e)
     {
         if (errmsg)
-            *errmsg += e.what();
+            *errmsg = e.what();
     }
     return std::string();
 }
 
+std::string LuaVal::dumps_or_throw() const
+{
+    std::string err;
+    std::string value = dumps(&err);
+    if (!err.empty())
+        throw smallfolk_exception("%s", err.c_str());
+    return value;
+}
+
 LuaVal LuaVal::loads(std::string const & string, std::string * errmsg)
 {
-    return loads(string, g_load_limits, errmsg);
+    return loads(string, read_load_limits(), errmsg);
 }
 
 LuaVal LuaVal::loads(std::string const & string, LoadLimits const & limits, std::string * errmsg)
@@ -404,9 +653,23 @@ LuaVal LuaVal::loads(std::string const & string, LoadLimits const & limits, std:
     catch (smallfolk_exception const & e)
     {
         if (errmsg)
-            *errmsg += e.what();
+            *errmsg = e.what();
     }
     return LuaVal::nil;
+}
+
+LuaVal LuaVal::loads_or_throw(std::string const & string)
+{
+    return loads_or_throw(string, read_load_limits());
+}
+
+LuaVal LuaVal::loads_or_throw(std::string const & string, LoadLimits const & limits)
+{
+    std::string err;
+    LuaVal value = loads(string, limits, &err);
+    if (!err.empty())
+        throw smallfolk_exception("%s", err.c_str());
+    return value;
 }
 
 bool LuaVal::operator==(LuaVal const& rhs) const
@@ -540,7 +803,10 @@ std::string Serializer::escape_quotes(const std::string & before, char quote)
     for (std::string::size_type i = 0; i < before.length(); ++i)
     {
         if (before[i] == quote)
+        {
             after += quote;
+            after += quote;
+        }
         else
             after += before[i];
     }
@@ -558,7 +824,12 @@ std::string Serializer::unescape_quotes(const std::string & before, char quote)
         if (before[i] == quote)
         {
             if (i + 1 < before.length() && before[i + 1] == quote)
+            {
+                after += quote;
                 ++i;
+            }
+            else
+                after += before[i];
         }
         else
             after += before[i];
@@ -681,16 +952,18 @@ LuaVal Serializer::expect_object(std::string const & string, size_t & i, Seriali
         ctx.on_value_created();
         return LuaVal::nil;
     case 'Q':
-        ctx.on_value_created();
-        return -(0 / _zero);
     case 'N':
-        ctx.on_value_created();
-        return (0 / _zero);
     case 'I':
-        ctx.on_value_created();
-        return (1 / _zero);
     case 'i':
+        if (ctx.limits.reject_non_finite_numbers)
+            throw smallfolk_exception("non-finite number encoding rejected at %zu", i - 1);
         ctx.on_value_created();
+        if (cc == 'Q')
+            return -(0 / _zero);
+        if (cc == 'N')
+            return (0 / _zero);
+        if (cc == 'I')
+            return (1 / _zero);
         return -(1 / _zero);
     case '\'':
     case '"':
@@ -742,8 +1015,16 @@ LuaVal Serializer::expect_object(std::string const & string, size_t & i, Seriali
             ++i;
             return nt;
         }
+        unsigned int entry_count = 0;
         while (true)
         {
+            if (ctx.limits.max_table_entries != 0 && ++entry_count > ctx.limits.max_table_entries)
+            {
+                throw smallfolk_exception(
+                    "load limit exceeded: max table entries %zu",
+                    ctx.limits.max_table_entries);
+            }
+
             LuaVal k = expect_object(string, i, tables, ctx);
             char at = strat(string, i);
             while (at == ' ')

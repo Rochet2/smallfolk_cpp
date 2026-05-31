@@ -26,12 +26,12 @@ int main()
         "somestring",
         123.456,
         true,
-        LuaVal::LuaTable{
+        lua_val::map({
             { "t", -678 },
             { "test", 123.45600128173828 },
             { "f", 268435455 },
-            { "subtable", { 1, 2, 3 } }
-        }
+            { "subtable", lua_val::array({ 1, 2, 3 }) }
+        })
     };
 
     std::string serialized = sample.dumps();

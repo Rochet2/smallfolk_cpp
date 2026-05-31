@@ -2,19 +2,13 @@
 #define SMALLFOLK_H
 
 #include <string>
-#include <vector>
-#include <list>
-#include <deque>
-#include <set>
-#include <array>
-#include <forward_list>
 #include <unordered_map>
-#include <map>
-#include <memory> // std::unique_ptr
-#include <stdexcept> // std::logic_error
-#include <cstddef> // size_t
-#include <cstdint> // int64_t
-#include <utility> // std::move
+#include <memory>
+#include <stdexcept>
+#include <cstddef>
+#include <cstdint>
+#include <utility>
+#include <initializer_list>
 
 class smallfolk_exception : public std::logic_error
 {
@@ -42,7 +36,11 @@ struct LoadLimits
     size_t max_string_length = 1024 * 1024;
     unsigned max_nesting_depth = 256;
     size_t max_value_count = 100000;
+    // Maximum key/value pairs in a single table. 0 disables this check.
+    size_t max_table_entries = 100000;
     bool require_consumed_input = true;
+    // When true, reject I/i/N/Q non-finite number encodings during loads().
+    bool reject_non_finite_numbers = false;
 };
 
 class LuaVal;
@@ -63,25 +61,26 @@ class LuaVal
 {
 public:
 
-    // static nil value, same as LuaVal(TNIL);
-    // You can use it as for example as default const reference
     static LuaVal const nil;
 
+    // Immutable library defaults (never changes at runtime).
     static LoadLimits const & default_load_limits();
+    // Tighter defaults suitable for untrusted user input in servers.
+    static LoadLimits untrusted_load_limits();
+    // Thread-safe read of the process-wide default used by loads() without an explicit limits argument.
     static LoadLimits get_load_limits();
+    // Thread-safe write of the process-wide default. Prefer passing LoadLimits per call in multi-threaded code.
     static void set_load_limits(LoadLimits limits);
 
-    // returns the string representation of the value info similar to lua tostring
     std::string tostring() const;
 
-    // use as the hasher for containers, for example std::unordered_map<LuaVal, int, LuaVal::LuaValHasher>
     struct LuaValHasher
     {
         size_t operator()(LuaVal const & v) const;
     };
 
     typedef std::unordered_map<LuaVal, LuaVal> LuaTable;
-    typedef std::unique_ptr<LuaTable> TblPtr; // circular reference memleak if insert self to self
+    typedef std::unique_ptr<LuaTable> TblPtr;
 
     LuaVal(const LuaTypeTag tag) : tag(tag), tbl_ptr(tag == TTABLE ? new LuaTable() : nullptr), d(0), b(false) {}
     LuaVal() : tag(TTABLE), tbl_ptr(new LuaTable()), d(0), b(false) {}
@@ -91,94 +90,27 @@ public:
     LuaVal(const float d) : tag(TNUMBER), tbl_ptr(nullptr), d(d), b(false) {}
     LuaVal(const double d) : tag(TNUMBER), tbl_ptr(nullptr), d(d), b(false) {}
     LuaVal(const std::string & s) : tag(TSTRING), tbl_ptr(nullptr), s(s), d(0), b(false) {}
-    LuaVal(const char * s) : tag(TSTRING), tbl_ptr(nullptr), s(s), d(0), b(false) {}
+    explicit LuaVal(const char * s) : tag(TSTRING), tbl_ptr(nullptr), s(s), d(0), b(false) {}
     LuaVal(const bool b) : tag(TBOOL), tbl_ptr(nullptr), d(0), b(b) {}
     LuaVal(LuaVal const & val) : tag(val.tag), tbl_ptr(val.tag == TTABLE ? val.tbl_ptr ? new LuaTable(*val.tbl_ptr) : new LuaTable() : nullptr), s(val.s), d(val.d), b(val.b) {}
-    LuaVal(LuaVal && val) noexcept : tag(std::move(val.tag)), tbl_ptr(std::move(val.tbl_ptr)), s(std::move(val.s)), d(std::move(val.d)), b(std::move(val.b)) {}
-    LuaVal(std::initializer_list<LuaVal> const & l) : tag(TTABLE), tbl_ptr(new LuaTable()), d(0), b(false)
+    LuaVal(LuaVal && val) noexcept : tag(std::move(val.tag)), tbl_ptr(std::move(val.tbl_ptr)), s(std::move(val.s)), d(std::move(val.d)), b(std::move(val.b))
     {
-        InitializeSequence(l);
+        if (val.tag == TTABLE)
+            val.tbl_ptr.reset(new LuaTable());
     }
-    template<typename T> LuaVal(std::initializer_list<T> const & l) : tag(TTABLE), tbl_ptr(new LuaTable()), d(0), b(false)
-    {
-        InitializeSequence(l);
-    }
-    LuaVal(std::vector<LuaVal> const & l) : tag(TTABLE), tbl_ptr(new LuaTable()), d(0), b(false)
-    {
-        InitializeSequence(l);
-    }
-    template<typename T> LuaVal(std::vector<T> const & l) : tag(TTABLE), tbl_ptr(new LuaTable()), d(0), b(false)
-    {
-        InitializeSequence(l);
-    }
-    LuaVal(std::list<LuaVal> const & l) : tag(TTABLE), tbl_ptr(new LuaTable()), d(0), b(false)
-    {
-        InitializeSequence(l);
-    }
-    template<typename T> LuaVal(std::list<T> const & l) : tag(TTABLE), tbl_ptr(new LuaTable()), d(0), b(false)
-    {
-        InitializeSequence(l);
-    }
-    template<size_t C> LuaVal(std::array<LuaVal, C> const & l) : tag(TTABLE), tbl_ptr(new LuaTable()), d(0), b(false)
-    {
-        InitializeSequence(l);
-    }
-    template<typename T, size_t C> LuaVal(std::array<T, C> const & l) : tag(TTABLE), tbl_ptr(new LuaTable()), d(0), b(false)
-    {
-        InitializeSequence(l);
-    }
-    LuaVal(std::deque<LuaVal> const & l) : tag(TTABLE), tbl_ptr(new LuaTable()), d(0), b(false)
-    {
-        InitializeSequence(l);
-    }
-    template<typename T> LuaVal(std::deque<T> const & l) : tag(TTABLE), tbl_ptr(new LuaTable()), d(0), b(false)
-    {
-        InitializeSequence(l);
-    }
-    LuaVal(std::forward_list<LuaVal> const & l) : tag(TTABLE), tbl_ptr(new LuaTable()), d(0), b(false)
-    {
-        InitializeSequence(l);
-    }
-    template<typename T> LuaVal(std::forward_list<T> const & l) : tag(TTABLE), tbl_ptr(new LuaTable()), d(0), b(false)
-    {
-        InitializeSequence(l);
-    }
-    LuaVal(std::map<LuaVal, LuaVal> const & l) : tag(TTABLE), tbl_ptr(new LuaTable()), d(0), b(false)
-    {
-        InitializeMap(l);
-    }
-    template<typename K, typename V> LuaVal(std::map<K, V> const & l) : tag(TTABLE), tbl_ptr(new LuaTable()), d(0), b(false)
-    {
-        InitializeMap(l);
-    }
-    LuaVal(std::unordered_map<LuaVal, LuaVal> const & l) : tag(TTABLE), tbl_ptr(new LuaTable(l)), d(0), b(false)
-    {
-    }
-    template<typename K, typename V> LuaVal(std::unordered_map<K, V> const & l) : tag(TTABLE), tbl_ptr(new LuaTable()), d(0), b(false)
-    {
-        InitializeMap(l);
-    }
+    LuaVal(std::initializer_list<LuaVal> const & l);
+
     static LuaVal table() { return LuaVal(TTABLE); }
-    static LuaVal mrg(LuaVal const & l, LuaVal const & r)
-    {
-        LuaVal t = l;
-        for (auto const & v : r.tbl())
-            t[v.first] = v.second;
-        return t;
-    }
-    static LuaVal mrg(LuaVal&& l, LuaVal&& r) { return mrg(l, std::move(r)); }
-    static LuaVal mrg(LuaVal&& l, LuaVal const & r)
-    {
-        for (auto const & v : r.tbl())
-            l[v.first] = v.second;
-        return std::move(l);
-    }
-    static LuaVal mrg(LuaVal const & l, LuaVal&& r)
-    {
-        for (auto const & v : l.tbl())
-            r.setignore(v.first, v.second);
-        return std::move(r);
-    }
+
+    static LuaVal merge(LuaVal const & l, LuaVal const & r);
+    static LuaVal merge(LuaVal && l, LuaVal && r);
+    static LuaVal merge(LuaVal && l, LuaVal const & r);
+    static LuaVal merge(LuaVal const & l, LuaVal && r);
+
+    static LuaVal mrg(LuaVal const & l, LuaVal const & r) { return merge(l, r); }
+    static LuaVal mrg(LuaVal && l, LuaVal && r) { return merge(std::move(l), std::move(r)); }
+    static LuaVal mrg(LuaVal && l, LuaVal const & r) { return merge(std::move(l), r); }
+    static LuaVal mrg(LuaVal const & l, LuaVal && r) { return merge(l, std::move(r)); }
 
     ~LuaVal() = default;
 
@@ -188,80 +120,81 @@ public:
     bool isbool() const { return tag == TBOOL; }
     bool isnil() const { return tag == TNIL; }
 
-    // gettable, adds key-nil pair if not existing
-    // nil key throws error
+    // Inserts an empty table when the key is missing.
     LuaVal & operator[](LuaVal const & k);
     LuaVal const & operator[](LuaVal const & k) const;
-    // gettable
+
+    // Returns LuaVal::nil when the key is missing (same reference as static nil).
     LuaVal const & get(LuaVal const & k) const;
-    // returns true if value was found with key
+    LuaVal const & get(std::string const & k) const;
+    LuaVal const & get(int k) const;
+
+    // nullptr when the key is missing; otherwise points at the stored value (including nil).
+    LuaVal const * try_get(LuaVal const & k) const;
+    LuaVal const * try_get(std::string const & k) const;
+    LuaVal const * try_get(int k) const;
+    LuaVal const * find(LuaVal const & k) const { return try_get(k); }
+
+    // Throws when the key is missing; does not insert.
+    LuaVal & at(LuaVal const & k);
+    LuaVal const & at(LuaVal const & k) const;
+    LuaVal & at(std::string const & k);
+    LuaVal const & at(std::string const & k) const;
+    LuaVal & at(int k);
+    LuaVal const & at(int k) const;
+
     bool has(LuaVal const & k) const;
-    // settable, return self; values are deep-copied unless moved in via rvalue overload
+    bool has(std::string const & k) const;
+    bool has(int k) const;
+
     LuaVal & set(LuaVal const & k, LuaVal const & v);
     LuaVal & set(LuaVal const & k, LuaVal && v);
-    // settable ignore if exists, return self
+    LuaVal & set(std::string const & k, LuaVal const & v);
+    LuaVal & set(std::string const & k, LuaVal && v);
+    LuaVal & set(std::string const & k, std::string const & v) { return set(k, LuaVal(v)); }
+    LuaVal & set(std::string const & k, char const * v) { return set(k, LuaVal(v)); }
+    LuaVal & set(int k, LuaVal const & v);
+    LuaVal & set(int k, LuaVal && v);
+    LuaVal & set(int k, std::string const & v) { return set(k, LuaVal(v)); }
+    LuaVal & set(int k, char const * v) { return set(k, LuaVal(v)); }
+
     LuaVal & setignore(LuaVal const & k, LuaVal const & v);
     LuaVal & setignore(LuaVal const & k, LuaVal && v);
-    // erase, return self
-    LuaVal & rem(LuaVal const & k);
-    // table array size, not actual element count
+
+    LuaVal & erase(LuaVal const & k);
+    LuaVal & rem(LuaVal const & k) { return erase(k); }
+
     unsigned int len() const;
-    // table.insert, return self
     LuaVal & insert(LuaVal const & v, LuaVal const & pos = nil);
     LuaVal & insert(LuaVal && v, LuaVal const & pos = nil);
-    // table.remove, return self
+    LuaVal & insert(char const * v) { return insert(LuaVal(v)); }
     LuaVal & remove(LuaVal const & pos = nil);
 
-    // get a number value
-    double num() const
-    {
-        if (!isnumber())
-            throw smallfolk_exception("using num on non number object");
-        return d;
-    }
-    // get a boolean value
-    bool boolean() const
-    {
-        if (!isbool())
-            throw smallfolk_exception("using boolean on non bool object");
-        return b;
-    }
-    // get a string value
-    std::string const & str() const
-    {
-        if (!isstring())
-            throw smallfolk_exception("using str on non string object");
-        return s;
-    }
-    // get a table value
-    LuaTable const & tbl() const
-    {
-        if (!istable())
-            throw smallfolk_exception("using tbl on non table object");
-        return *tbl_ptr;
-    }
+    double num() const;
+    bool boolean() const;
+    std::string const & str() const;
+    LuaTable const & tbl() const;
 
-    // Returns a typetag, the internal identifier for each type
+    bool try_as_number(double & out) const;
+    bool try_as_string(std::string const *& out) const;
+    bool try_as_bool(bool & out) const;
+
     LuaTypeTag typetag() const { return tag; }
-    // Returns the LuaVal's type as a string
     std::string type() const { return type(typetag()); }
-    // Returns the type tag's type as a string
     static std::string type(LuaTypeTag tag);
 
-    // serializes the value into string
-    // errmsg is optional value to output error message to on failure
-    // returns empty string on error
     std::string dumps(std::string* errmsg = nullptr) const;
+    std::string dumps_or_throw() const;
 
-    // deserialize a string into a LuaVal using the active load limits
-    // errmsg is optional value to output error message to on failure
+    // When errmsg is non-null it is assigned (not appended) on failure.
     static LuaVal loads(std::string const & string, std::string* errmsg = nullptr);
     static LuaVal loads(std::string const & string, LoadLimits const & limits, std::string* errmsg = nullptr);
+    static LuaVal loads_or_throw(std::string const & string);
+    static LuaVal loads_or_throw(std::string const & string, LoadLimits const & limits);
 
     bool operator==(LuaVal const& rhs) const;
     bool operator!=(LuaVal const& rhs) const { return !(*this == rhs); }
 
-    // You can use !val to check for nil or false
     explicit operator bool() const;
 
     LuaVal& operator=(LuaVal const& val);
@@ -272,37 +205,17 @@ public:
         s = std::move(val.s);
         d = std::move(val.d);
         b = std::move(val.b);
+        if (val.tag == TTABLE)
+            val.tbl_ptr.reset(new LuaTable());
+        else
+            val.tbl_ptr = nullptr;
         return *this;
     }
 
 private:
 
-    template<typename T> void InitializeSequence(T const & l)
-    {
-        LuaTable & tbl = *tbl_ptr;
-        unsigned int i = 0;
-        for (auto const & v : l)
-        {
-            LuaVal vv(v);
-            if (vv.isnil())
-                ++i;
-            else
-                tbl[++i] = std::move(vv);
-        }
-    }
+    void InitializeSequence(std::initializer_list<LuaVal> const & l);
 
-    template<typename T> void InitializeMap(T const & l)
-    {
-        LuaTable & tbl = *tbl_ptr;
-        for (auto const & e : l)
-        {
-            LuaVal k(e.first);
-            LuaVal v(e.second);
-            if (!k.isnil() && !v.isnil())
-                tbl[std::move(k)] = std::move(v);
-        }
-    }
-    
     friend size_t LuaValHash(LuaVal const & v);
 
     LuaTypeTag tag;
@@ -311,5 +224,21 @@ private:
     double d;
     bool b;
 };
+
+namespace lua_val {
+
+inline LuaVal nil() { return LuaVal(TNIL); }
+inline LuaVal number(double v) { return LuaVal(v); }
+inline LuaVal number(int v) { return LuaVal(v); }
+inline LuaVal number(int64_t v) { return LuaVal(v); }
+inline LuaVal number(float v) { return LuaVal(v); }
+inline LuaVal string(std::string const & v) { return LuaVal(v); }
+inline LuaVal string(char const * v) { return LuaVal(v); }
+inline LuaVal boolean(bool v) { return LuaVal(v); }
+inline LuaVal table() { return LuaVal::table(); }
+inline LuaVal array(std::initializer_list<LuaVal> const & items) { return LuaVal(items); }
+LuaVal map(std::initializer_list<std::pair<LuaVal, LuaVal>> const & entries);
+
+} // namespace lua_val
 
 #endif

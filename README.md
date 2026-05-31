@@ -1,13 +1,13 @@
 # smallfolk_cpp
 
-Smallfolk_cpp is a library for representing `Lua` values in `C++` and (de)serializing them. The serialization is made to work with smallfolk serializer made for lua. Most serializer logic is borrowed from gvx/Smallfolk. https://github.com/gvx/Smallfolk
+Smallfolk_cpp is a library for representing `Lua` values in `C++` and (de)serializing them. The serialization is made to work with smallfolk serializer made for lua. Most serializer logic is borrowed from gvx/Smallfolk. [https://github.com/gvx/Smallfolk](https://github.com/gvx/Smallfolk)
 
 Smallfolk_cpp does not have dependencies other than `C++11` and it **does not need lua**. It simply uses same format and logic as gvx/Smallfolk for serialization.
 
 Smallfolk_cpp has its own type `LuaVal` to represent `Lua` values in `C++`.
 They allow representing bool, number, string, nil and table.
 
-Due to implementation difficulties and security some features of gvx/Smallfolk are not supported. A version of smallfolk for lua with the unsupported features removed can be found at https://github.com/Rochet2/Smallfolk
+Due to implementation difficulties and security some features of gvx/Smallfolk are not supported. A version of smallfolk for lua with the unsupported features removed can be found at [https://github.com/Rochet2/Smallfolk](https://github.com/Rochet2/Smallfolk)
 
 You use, distribute and extend Smallfolk_cpp under the terms of the MIT license.
 
@@ -27,7 +27,7 @@ target_link_libraries(my_app PRIVATE smallfolk_cpp::smallfolk)
 Build and test from the repository root:
 
 ```bash
-cmake -B build -DSMALLFOLK_BUILD_TESTS=ON -DSMALLFOLK_BUILD_BENCHMARK=ON
+cmake -B build -DSMALLFOLK_BUIlen()LD_TESTS=ON -DSMALLFOLK_BUILD_BENCHMARK=ON
 cmake --build build
 ctest --test-dir build --output-on-failure   # if you enable CTest
 ./build/smallfolk_tests
@@ -98,9 +98,10 @@ The benchmark serializes this sample payload:
 
 ## Table cycles
 
-__Note: This feature was disabled cause of difficult implementing in C++ and possibly unwanted infinite cycles. All table assigning create copies now in the C++ code and no @ notation is recognised for serializing or deserializing. Any such references are set to nil when deserializing. Any @ references are otherwise deep copies in the C++ code__
+**Note: This feature was disabled cause of difficult implementing in C++and possibly unwanted infinite cycles. All table assigning create copies now in the C++ code and no @ notation is recognised for serializing or deserializing. Any such references are set to nil when deserializing. Any @ references are otherwise deep copies in the C++ code**
 
 From original smallfolk
+
 > Sometimes you have strange, non-euclidean geometries in your table
 > constructions. It happens, I don't judge. Smallfolk can deal with that, where
 > some other serialization libraries (or anything that produces JSON) cry "Iä!
@@ -132,18 +133,21 @@ Tune limits for your deployment. See [ASSUMPTIONS.md](ASSUMPTIONS.md) for what i
 
 ## Tested
 
-Automated tests live in `tests/test_smallfolk.cpp` and run via the `smallfolk_tests` target.
+Automated tests live in `tests/test_smallfolk.cpp` and `tests/test_schema.cpp`, run via the `smallfolk_tests` and `smallfolk_schema_tests` targets.
 
 The code has also been in use with a server-client C++-Lua communication system called AIO through which the API has been made more usable and critical issues have been addressed.
-- https://github.com/Rochet2/AIO
-- https://github.com/Rochet2/TrinityCore/tree/c_aio
-- https://github.com/SaiFi0102/TrinityCore/tree/CAIO-3.3.5
+
+- [https://github.com/Rochet2/AIO](https://github.com/Rochet2/AIO)
+- [https://github.com/Rochet2/TrinityCore/tree/c_aio](https://github.com/Rochet2/TrinityCore/tree/c_aio)
+- [https://github.com/SaiFi0102/TrinityCore/tree/CAIO-3.3.5](https://github.com/SaiFi0102/TrinityCore/tree/CAIO-3.3.5)
 
 ## Reference
 
 ### try-catch
+
 Most functions can throw `smallfolk_exception` and some string library errors and possibly more.
 One method for try catching errors you can use is this:
+
 ```C++
 try {
   // smallfolk_cpp code
@@ -156,42 +160,106 @@ catch (smallfolk_exception& e) {
 You need to catch exceptions mostly from incorrect handling of LuaVal. For example trying to access a number like a table will cause an exception.
 
 ### serializing
+
 Serializing happens by calling the member function `std::string LuaVal::dumps(std::string* errmsg = nullptr)`. When an error occurs with the serialization an empty string is returned and if errmsg points to a string then it is filled with the error message.
 This function does not throw.
 
 ### deserializing
+
 Deserializing happens by calling `static LuaVal LuaVal::loads(std::string const & string, std::string* errmsg = nullptr)` or the overload that accepts an explicit `LoadLimits` object. When an error occurs with the deserialization a LuaVal representing a nil is returned and if errmsg points to a string then it is filled with the error message.
 This function does not throw.
 
 ### LoadLimits
-Configure deserialization bounds with `LoadLimits`. Use `LuaVal::set_load_limits()` for process-wide defaults, or pass limits per call to `loads()`.
+
+Configure deserialization bounds with `LoadLimits`. `LuaVal::set_load_limits()` and `get_load_limits()` are thread-safe, but **in multi-threaded servers prefer passing explicit limits per call** rather than mutating process-wide defaults at runtime.
+
+For untrusted user input, start from `LuaVal::untrusted_load_limits()` and tune from there:
 
 ```C++
-LoadLimits limits = LuaVal::default_load_limits();
-limits.max_string_length = 65536;
-limits.max_nesting_depth = 64;
-LuaVal::set_load_limits(limits);
+LoadLimits limits = LuaVal::untrusted_load_limits();
+limits.max_input_size = 128 * 1024;
 
 std::string err;
-LuaVal value = LuaVal::loads(payload, &err);
+LuaVal value = LuaVal::loads(payload, limits, &err);
 ```
 
 Fields:
 
-| Field | Default | Purpose |
-|-------|---------|---------|
-| `max_input_size` | 16 MiB | Reject inputs larger than this |
-| `max_string_length` | 1 MiB | Reject quoted string contents longer than this |
-| `max_nesting_depth` | 256 | Reject tables nested deeper than this |
-| `max_value_count` | 100000 | Reject documents with more parsed values |
-| `require_consumed_input` | `true` | Reject trailing bytes after the root value |
+
+| Field                      | Default | Purpose                                              |
+| -------------------------- | ------- | ---------------------------------------------------- |
+| `max_input_size`           | 16 MiB  | Reject inputs larger than this                       |
+| `max_string_length`        | 1 MiB   | Reject quoted string contents longer than this       |
+| `max_nesting_depth`        | 256     | Reject tables nested deeper than this                |
+| `max_value_count`          | 100000  | Reject documents with more parsed values (total)     |
+| `max_table_entries`        | 100000  | Reject tables with more entries (0 = disable check)  |
+| `require_consumed_input`   | `true`  | Reject trailing bytes after the root value           |
+| `reject_non_finite_numbers`| `false` | Reject `I`/`i`/`N`/`Q` non-finite encodings          |
+
+### Thread safety
+
+| API | Concurrent use |
+| --- | -------------- |
+| `loads(input, limits, &err)` | Safe when each thread has its own `LuaVal` / error string; pass explicit `LoadLimits` |
+| `set_load_limits()` / `get_load_limits()` | Synchronized; avoid runtime tuning from many threads |
+| Mutable `LuaVal` | **Not thread-safe** — treat parsed values as immutable when shared |
+| `CompiledSchema` | Immutable after construction; safe to share read-only |
+| `schema::number()` and other presets | Safe after startup |
+| `schema::array_of()` / `map_of()` / … | Synchronized factories; returned nodes valid for process lifetime |
+| `validate(value, Schema)` | Thread-safe but recompiles each call — use `CompiledSchema` instead |
+
+See `ASSUMPTIONS.md` for full threading and security notes.
+
+
+### Schema validation
+
+Include `smallfolk_schema.h` to validate parsed `LuaVal` trees against a declarative schema. Parsing limits (`LoadLimits`) and schema validation are separate layers.
+
+```C++
+#include "smallfolk_schema.h"
+
+static Schema::Field player_fields[] = {
+    { "name", &schema::string(), true },
+    { "hp", &schema::number(), true },
+};
+
+static Schema const player_schema = {
+    SchemaKind::Object,
+    nullptr, 0, static_cast<unsigned>(-1),
+    player_fields, 2, false
+};
+
+// Build once, share across threads (recommended for servers).
+static CompiledSchema const compiled(player_schema);
+
+LoadLimits load_limits = LuaVal::untrusted_load_limits();
+ValidateLimits validate_limits = untrusted_validate_limits();
+std::string err;
+LuaVal player = loads_validated(payload, compiled, load_limits, validate_limits, &err);
+```
+
+Supported schema features:
+
+- Kinds: `Any`, `Null`, `Bool`, `Number`, `String`, `Array`, `Object`, `OneOf`
+- Built-in presets in `namespace schema`: `number()`, `string()`, `array()`, `object()`, `value()` (recursive JSON-like), `number_range()`, `array_of()`, `map_of()`, `string_enum()`, `one_of()`, and more
+- Number min/max bounds
+- Array min/max length and per-element schema
+- Object required fields and `allow_extra_keys`
+- `enum_values` for string enums
+- `alternatives` for `OneOf` unions
+- `validator` callback for custom checks
+- `ValidateLimits` depth/step budgets (`untrusted_validate_limits()`)
+- `CompiledSchema` for fast object field lookup (build once, validate many times)
 
 ### LuaVal
+
 LuaVal is a type used to represent lua values in C++. LuaVal has a range of functions to access the underlying values and to construct LuaVal from different values. LuaVal is the input for serialization and output of deserialization.
 
 ### LuaVal constructors
+
 Constructors allow implicitly constructing values.
-Constructors do not throw. Watch out for quirks with initializer list constructor: http://stackoverflow.com/questions/26947704/implicit-conversion-failure-from-initializer-list
+Constructors do not throw. Watch out for quirks with initializer list constructor: [http://stackoverflow.com/questions/26947704/implicit-conversion-failure-from-initializer-list](http://stackoverflow.com/questions/26947704/implicit-conversion-failure-from-initializer-list)
+
 ```C++
 LuaVal implicit_test = -123;
 LuaVal copy_test(implicit_test);
@@ -220,24 +288,29 @@ LuaVal t5 = {1,2, "test", vec};
 ```
 
 Creating sequences is easy, but creating complex tables that contain different types of values can be difficult or take a lot of space in code. To avoid quirks and for conveience you can deserialize strings to create values in a compact way. Here two equivalent values are created with normal style and deserialization:
+
 ```c++
 LuaVal val1 = { 1,2, LuaVal::mrg({3,4.5}, LuaVal::LuaTable({{"ke","test"}})) };
 LuaVal val2 = LuaVal::loads("{1,2,{3,4.5,'ke':'test'}}");
 ```
 
 ### static nil
+
 A static value `static const LuaVal LuaVal::nil` is a preconstructed nil object.
 It can be used as a default value or return value when a const nil value reference is needed to avoid constructing unnecessary copies.
 
 ### hash
+
 The LuaVal class contains a hasher `LuaVal::LuaValHasher`. You need to use it when you use a LuaVal in a hash container for example: `std::unordered_set<LuaVal, LuaVal::LuaValHasher> myset;` or `std::unordered_map<LuaVal, int, LuaVal::LuaValHasher> mymap;`.
 Currently there are no order operators implemented to be used for sorted sets and maps however.
 May throw if LuaVal is not valid for some reason (which should not be possible).
 
 ### typetag
+
 There are definitions for typetags used to identify each value type. These can be used in the constructor of a LuaValue as well.
 For example a table can be created with `LuaValue table(TTABLE)`. You can get the typetag of an object with the member function `LuaTypeTag LuaVal::typetag()`.
 GetTypeTag does not throw.
+
 ```C++
 enum LuaTypeTag
 {
@@ -250,22 +323,26 @@ enum LuaTypeTag
 ```
 
 ### tostring
+
 The member function `std::string LuaVal::tostring()` returns a string representation of the object. This is similar to tostring in lua.
 You can get a string representation of the typetag of a value with `value.type()`.
 You can get a string representation of a typetag with `LuaVal::type(tag)`.
 All of these may throw if LuaVal or tag is not valid for some reason (which should not be possible).
 
 ### operators
+
 The LuaVal class offers a few operators.  
 You can use == and != operators to compare scalar values by value. **Tables compare by internal identity (pointer), not structural contents** — two tables with the same data are unequal after copying. For content comparison, compare `dumps()` output or implement a deep `equiv()` helper (not built in).
 LuaVal has the bool operator implemented so that nil and false will return false if a LuaVal is in a conditional statement. The assignment operator is also implemented and works as you would expect.
 May throw if LuaVal is not valid for some reason (which should not be possible).
 
-**`operator[]` auto-vivification:** reading a missing key inserts an empty table. Prefer `get()`, `has()`, and `set()` when building maps without stray entries. Avoid chaining `a[b][c]` in one expression — intermediate references can be invalidated if a nested table rehashes; use `set()`/`get()` or build subtables locally first.
+`**operator[]` auto-vivification:** reading a missing key inserts an empty table. Prefer `get()`, `has()`, and `set()` when building maps without stray entries. Avoid chaining `a[b][c]` in one expression — intermediate references can be invalidated if a nested table rehashes; use `set()`/`get()` or build subtables locally first.
 
 ### isvalue
+
 There is a collection of member functions you can use to check whether the object is really of some type.
 These functions do not throw.
+
 ```C++
 luaval.isstring()
 luaval.isnumber()
@@ -275,8 +352,10 @@ luaval.isnil()
 ```
 
 ### LuaVal values
+
 LuaVal can represent different types of data like a string and a number. To access the underlying value you must use specific functions.
 The functions will throw if you use them on the wrong type object, for example using the str function on a table will throw.
+
 ```C++
 luaval.num()
 luaval.str()
@@ -285,6 +364,7 @@ luaval.tbl()
 ```
 
 ### table access
+
 There are several methods for accessing and editing a table.
 **Note Inserted values are deep-copied via const lvalue setters. Use move overloads (`set(key, std::move(value))`, `insert(std::move(value))`) to avoid redundant copies of large tables.**
 
@@ -303,6 +383,7 @@ A method for erasing data with a key is `luaval.rem(key)` which also returns the
 This function do not throw unless you use it on non table objects or with nil keys.
 
 Example usage of the functions:
+
 ```C++
 LuaVal table(TTABLE); // create an empty table
 table.set(1, "test").set(2, 77.234).set(3, -324); // set multiple values
@@ -323,4 +404,5 @@ Insert and remove both return the accessed table.
 Each function throws if used on a non table object or pos is not valid.
 
 ### table merging
+
 You can merge two tables with `LuaVal::mrg(tbl1, tbl2)`. This will make a new table that contains values from both tables. If they have same keys then tbl2 will overwrite tbl1 value in the new table.
