@@ -1284,7 +1284,7 @@ LuaVal Serializer::expect_object(std::string const & string, size_t & i, ParseCo
 
             LuaVal k = expect_object(string, i, ctx);
             char at = strat(string, i);
-            while (at == ' ' || at == '\t')
+            while (at == ' ')
                 at = strat(string, ++i);
             if (at == ':')
             {
@@ -1296,7 +1296,7 @@ LuaVal Serializer::expect_object(std::string const & string, size_t & i, ParseCo
                 ++j;
             }
             char head = strat(string, i);
-            while (head == ' ' || head == '\t')
+            while (head == ' ')
                 head = strat(string, ++i);
             if (head == ',')
                 ++i;
