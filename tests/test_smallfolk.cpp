@@ -714,6 +714,13 @@ static void test_lua_smallfolk_interop_wires()
     }
 
     {
+        LuaVal value = LuaVal::loads("{\"a\"\t:\t1\t,\t\"b\":2}", &err);
+        expect_true(err.empty(), "lua wire tab around colon/comma loads");
+        expect_true(value.get(LuaVal("a")).num() == 1.0, "lua wire tab colon key a");
+        expect_true(value.get(LuaVal("b")).num() == 2.0, "lua wire tab colon key b");
+    }
+
+    {
         LuaVal original = LuaVal::loads("{1,2,{3,4.5,'ke':'test'}}", &err);
         expect_true(err.empty(), "interop round-trip source loads");
         std::string dumped = original.dumps(&err);

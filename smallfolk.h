@@ -86,8 +86,7 @@ public:
     };
 
     typedef std::unordered_map<LuaVal, LuaVal> LuaTable;
-    // Circular reference memleak if insert self to self (deep copy on assign avoids sharing).
-    typedef std::unique_ptr<LuaTable> TblPtr;
+    typedef std::unique_ptr<LuaTable> TblPtr; // Table assign deep-copies; @ circular refs unsupported.
 
     LuaVal(const LuaTypeTag tag) : tag(tag), tbl_ptr(tag == TTABLE ? new LuaTable() : nullptr), d(0), b(false) {}
     LuaVal() : tag(TTABLE), tbl_ptr(new LuaTable()), d(0), b(false) {}

@@ -49,7 +49,7 @@ This document records behavioral assumptions baked into smallfolk_cpp. If you re
 ## Locale and platform
 
 - Number parsing uses the `"C"` locale via `std::strtod` to avoid locale-dependent decimal separators.
-- `sprintf` / `snprintf` formatting for number output uses `% .17g` (Lua-minimum style precision for finite values).
+- Number output uses `std::snprintf` with `%.17g` (Lua-minimum style precision for finite values).
 
 ## Security
 
