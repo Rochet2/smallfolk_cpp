@@ -2,19 +2,6 @@
 
 All notable changes to this project are documented in this file.
 
-## [Unreleased]
-
-### Fixed
-
-- README accuracy (table-cycle note, install headers, API examples); ASSUMPTIONS number-format note.
-- Table parse accepts tab whitespace around `:` / `,` (same as top-level skip).
-- CMake install provides `find_package(smallfolk_cpp)` Config/Version files.
-- Remove unused `@`-cycle memo/`TABLES` leftovers from dump/load paths.
-
-### Changed
-
-- `.gitignore` covers `build-*/` and local `tmp_*.cpp` scratch files.
-
 ## [2.0.1] - 2026-05-31
 
 ### Added
