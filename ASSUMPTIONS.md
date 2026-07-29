@@ -9,7 +9,7 @@ This document records behavioral assumptions baked into smallfolk_cpp. If you re
 - Numbers are stored internally as `double`. Integer values outside exact `double` range may lose precision on round-trip.
 - Non-finite floats use Smallfolk's single-letter encodings (`I`, `i`, `N`, `Q`) rather than JSON-style `Infinity`/`NaN`. Set `LoadLimits::reject_non_finite_numbers` to reject these during `loads()`.
 - String keys and values use `"` or `'` quoting; embedded quotes are doubled. There is no `\` escape syntax.
-- Whitespace between tokens is limited to space and tab. Other whitespace (newlines, `\r`) is not skipped unless explicitly present in a string literal.
+- Whitespace between tokens is limited to space and tab at value boundaries. Between a table key and `:` / `,` / `}`, only spaces are skipped (not tabs), to keep the hot path tight.
 - Table keys that are positive integers with no fractional part serialize as array elements when consecutive from `1`. Gaps or non-integer numeric keys use explicit `key:value` form.
 - **`loads()` assumes the input is trusted only to the extent configured by `LoadLimits`.** Default limits cap input size, nesting depth, value count, per-table entry count, and per-string length. Trailing garbage after a valid value is rejected by default.
 
@@ -49,7 +49,7 @@ This document records behavioral assumptions baked into smallfolk_cpp. If you re
 ## Locale and platform
 
 - Number parsing uses the `"C"` locale via `std::strtod` to avoid locale-dependent decimal separators.
-- `sprintf` / `snprintf` formatting for number output uses `% .17g` (Lua-minimum style precision for finite values).
+- Number output uses `std::snprintf` with `%.17g` (Lua-minimum style precision for finite values).
 
 ## Security
 

@@ -46,7 +46,12 @@ ctest --test-dir build --output-on-failure   # if you enable CTest
 cmake --install build --prefix /path/to/prefix
 ```
 
-This installs `smallfolk.h`, the `smallfolk` library, and a CMake export file under `lib/cmake/smallfolk_cpp/`.
+This installs `smallfolk.h`, `smallfolk_convert.h`, `smallfolk_schema.h`, the `smallfolk` library, and CMake package files under `lib/cmake/smallfolk_cpp/` so consumers can use `find_package`:
+
+```cmake
+find_package(smallfolk_cpp REQUIRED)
+target_link_libraries(my_app PRIVATE smallfolk_cpp::smallfolk)
+```
 
 ## Usage
 
@@ -55,7 +60,7 @@ This installs `smallfolk.h`, the `smallfolk` library, and a CMake export file un
 
 // create a lua table and set some values to it
 LuaVal table = LuaVal::table();
-table[1] = "Hello"; // the values is automatically converted to LuaVal
+table[1] = "Hello"; // the value is automatically converted to LuaVal
 table["test"] = "world";
 table[67.5] = -234.5;
 
@@ -102,7 +107,7 @@ The benchmark serializes this sample payload:
 
 ## Table cycles
 
-**Note: This feature was disabled cause of difficult implementing in C++and possibly unwanted infinite cycles. All table assigning create copies now in the C++ code and no @ notation is recognised for serializing or deserializing. Any such references are set to nil when deserializing. Any @ references are otherwise deep copies in the C++ code**
+**Note: This feature was disabled because of difficult implementing in C++ and possibly unwanted infinite cycles. All table assigning creates deep copies now in the C++ code and no `@` notation is recognized for serializing or deserializing. Input containing `@` references is rejected on load. Assigning a table into itself (or as a key) always deep-copies; there are no shared cycles.**
 
 From original smallfolk
 
@@ -303,7 +308,7 @@ LuaVal t5 = {1,2, "test", vec};
 // Resulting table: {1,2,"test",{{"a","b"},{"a","b"}}}
 ```
 
-Creating sequences is easy, but creating complex tables that contain different types of values can be difficult or take a lot of space in code. To avoid quirks and for conveience you can deserialize strings to create values in a compact way. Here two equivalent values are created with normal style and deserialization:
+Creating sequences is easy, but creating complex tables that contain different types of values can be difficult or take a lot of space in code. To avoid quirks and for convenience you can deserialize strings to create values in a compact way. Here two equivalent values are created with normal style and deserialization:
 
 ```c++
 LuaVal val1 = { 1,2, LuaVal::mrg({3,4.5}, LuaVal::LuaTable({{"ke","test"}})) };
@@ -323,9 +328,9 @@ May throw if LuaVal is not valid for some reason (which should not be possible).
 
 ### typetag
 
-There are definitions for typetags used to identify each value type. These can be used in the constructor of a LuaValue as well.
-For example a table can be created with `LuaValue table(TTABLE)`. You can get the typetag of an object with the member function `LuaTypeTag LuaVal::typetag()`.
-GetTypeTag does not throw.
+There are definitions for typetags used to identify each value type. These can be used in the constructor of a `LuaVal` as well.
+For example a table can be created with `LuaVal table(TTABLE)`. You can get the typetag of an object with the member function `LuaTypeTag LuaVal::typetag()`.
+`typetag()` does not throw.
 
 ```C++
 enum LuaTypeTag
@@ -429,7 +434,7 @@ Variadic segments (`try_get_path("a", "b", 1)`) and `std::initializer_list<LuaVa
 
 #### `lua_val` factories
 
-`#include "smallfolk_convert.h"` for helpers such as `lua_val::map(...)`, `lua_val::array(...)`, `lua_val::string(...)`, and `lua_val::nil()`.
+Scalar helpers such as `lua_val::string(...)` and `lua_val::nil()` live in `smallfolk.h`. Include `smallfolk_convert.h` for STL-friendly factories such as `lua_val::map(...)` and `lua_val::array(...)` from `std::map` / `std::vector` / similar containers.
 
 A method for erasing data with a key is `luaval.rem(key)` which also returns the accessed table.
 This function do not throw unless you use it on non table objects or with nil keys.
@@ -444,12 +449,12 @@ table.set(table, "table as key?"); // table will work as a key, but it will be a
 std::cout << table.get("self copy").get(3).num() << std::endl; // get a value from a nested table
 table["number"] = 234; // Use table access operator to assign a value
 LuaVal & value = table["number"]; // Use table access operator to get a value
-table.set(e, LuaVal::nil).rem("number"); // remove some values through set and rem functions
+table.set("self copy", LuaVal::nil).rem("number"); // remove some values through set and rem functions
 if (table.has(100) and table[100].isstring())
-	std::cout << table[100].str() << std::end;
+	std::cout << table[100].str() << std::endl;
 ```
 
-For conveniency tables also have the methods `luaval.insert(value[, pos])`, `luaval.remove([pos])` and `luaval.len()`.
+For convenience tables also have the methods `luaval.insert(value[, pos])`, `luaval.remove([pos])` and `luaval.len()`.
 The len function returns the number of consecutive integer key elements in the table starting at index 1. It is similar to the # operator in lua.
 Insert and remove shift the values on the right side of the given position and insert or remove a value to or at the given position. If position is omitted, the value is inserted to the end of the list or the last element is removed.
 Insert and remove both return the accessed table.

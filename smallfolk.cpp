@@ -11,7 +11,6 @@
 #include <stdarg.h> // va_start
 #include <functional> // std::hash
 #include <mutex>
-#include <vector>
 
 namespace
 {
@@ -139,8 +138,6 @@ namespace
 
 namespace Serializer
 {
-    typedef std::vector<LuaVal> TABLES;
-    typedef std::unordered_map<LuaVal, unsigned int, LuaVal::LuaValHasher> MEMO;
     typedef std::stringstream ACC;
 
     inline bool is_nan_value(double value)
@@ -190,15 +187,15 @@ namespace Serializer
         return arr;
     }
 
-    unsigned int dump_type_table(LuaVal const & object, unsigned int nmemo, MEMO& memo, ACC& acc);
-    unsigned int dump_object(LuaVal const & object, unsigned int nmemo, MEMO& memo, ACC& acc);
+    void dump_type_table(LuaVal const & object, ACC& acc);
+    void dump_object(LuaVal const & object, ACC& acc);
     std::string escape_quotes(const std::string &before, char quote);
     std::string unescape_quotes(const std::string &before, char quote);
     bool nonzero_digit(char c);
     bool is_digit(char c);
     char strat(std::string const & string, std::string::size_type i);
     LuaVal expect_number(std::string const & string, size_t& start, ParseContext & ctx);
-    LuaVal expect_object(std::string const & string, size_t& i, TABLES& tables, ParseContext & ctx);
+    LuaVal expect_object(std::string const & string, size_t& i, ParseContext & ctx);
 }
 
 LoadLimits const & LuaVal::default_load_limits()
@@ -871,9 +868,7 @@ std::string LuaVal::dumps(std::string * errmsg) const
     {
         Serializer::ACC acc;
         acc << std::setprecision(17); // min lua precision
-        unsigned int nmemo = 0;
-        Serializer::MEMO memo;
-        Serializer::dump_object(*this, nmemo, memo, acc);
+        Serializer::dump_object(*this, acc);
         return acc.str();
     }
     catch (smallfolk_exception const & e)
@@ -907,10 +902,9 @@ LuaVal LuaVal::loads(std::string const & string, LoadLimits const & limits, std:
                 "load limit exceeded: max input size %zu",
                 limits.max_input_size);
 
-        Serializer::TABLES tables;
         ParseContext ctx{ limits, 0, 0 };
         size_t i = 0;
-        LuaVal result = Serializer::expect_object(string, i, tables, ctx);
+        LuaVal result = Serializer::expect_object(string, i, ctx);
         skip_whitespace(string, i);
         if (limits.require_consumed_input && i != string.length())
             throw smallfolk_exception("unexpected trailing input at position %zu", i);
@@ -976,21 +970,10 @@ LuaVal& LuaVal::operator=(LuaVal const& val)
     return *this;
 }
 
-unsigned int Serializer::dump_type_table(LuaVal const & object, unsigned int nmemo, MEMO & memo, ACC & acc)
+void Serializer::dump_type_table(LuaVal const & object, ACC & acc)
 {
     if (!object.istable())
         throw smallfolk_exception("using dump_type_table on non table object");
-
-    /*
-    // @ circular table references are disabled; deep copy on assign avoids shared refs.
-    auto it = memo.find(object);
-    if (it != memo.end())
-    {
-        acc << '@' << it->second;
-        return nmemo;
-    }
-    memo[object] = ++nmemo;
-    */
 
     acc << '{';
     bool first = true;
@@ -1011,27 +994,26 @@ unsigned int Serializer::dump_type_table(LuaVal const & object, unsigned int nme
         first = false;
         if (v.first != i)
         {
-            nmemo = dump_object(v.first, nmemo, memo, acc);
+            dump_object(v.first, acc);
             acc << ':';
         }
         else
             ++i;
-        nmemo = dump_object(*v.second, nmemo, memo, acc);
+        dump_object(*v.second, acc);
     }
     for (auto&& v : hash)
     {
         if (!first)
             acc << ',';
         first = false;
-        nmemo = dump_object(*v.first, nmemo, memo, acc);
+        dump_object(*v.first, acc);
         acc << ':';
-        nmemo = dump_object(*v.second, nmemo, memo, acc);
+        dump_object(*v.second, acc);
     }
     acc << '}';
-    return nmemo;
 }
 
-unsigned int Serializer::dump_object(LuaVal const & object, unsigned int nmemo, MEMO & memo, ACC & acc)
+void Serializer::dump_object(LuaVal const & object, ACC & acc)
 {
     switch (object.typetag())
     {
@@ -1050,11 +1032,11 @@ unsigned int Serializer::dump_object(LuaVal const & object, unsigned int nmemo, 
         append_number_token(acc, object.num());
         break;
     case TTABLE:
-        return dump_type_table(object, nmemo, memo, acc);
+        dump_type_table(object, acc);
+        break;
     default:
         throw smallfolk_exception("dump_object invalid or unhandled tag %i", object.typetag());
     }
-    return nmemo;
 }
 
 std::string Serializer::escape_quotes(const std::string & before, char quote)
@@ -1194,7 +1176,7 @@ LuaVal Serializer::expect_number(std::string const & string, size_t & start, Par
     return value;
 }
 
-LuaVal Serializer::expect_object(std::string const & string, size_t & i, Serializer::TABLES & tables, ParseContext & ctx)
+LuaVal Serializer::expect_object(std::string const & string, size_t & i, ParseContext & ctx)
 {
     char cc = strat(string, i++);
     switch (cc)
@@ -1202,7 +1184,7 @@ LuaVal Serializer::expect_object(std::string const & string, size_t & i, Seriali
     case ' ':
     case '\t':
         // skip whitespace
-        return expect_object(string, i, tables, ctx);
+        return expect_object(string, i, ctx);
     case 't':
         ctx.on_value_created();
         return true;
@@ -1285,7 +1267,6 @@ LuaVal Serializer::expect_object(std::string const & string, size_t & i, Seriali
         LuaVal nt(TTABLE);
         ctx.on_value_created();
         unsigned int j = 1;
-        tables.push_back(nt);
         if (strat(string, i) == '}')
         {
             ++i;
@@ -1301,13 +1282,13 @@ LuaVal Serializer::expect_object(std::string const & string, size_t & i, Seriali
                     ctx.limits.max_table_entries);
             }
 
-            LuaVal k = expect_object(string, i, tables, ctx);
+            LuaVal k = expect_object(string, i, ctx);
             char at = strat(string, i);
             while (at == ' ')
                 at = strat(string, ++i);
             if (at == ':')
             {
-                nt.set(k, expect_object(string, ++i, tables, ctx));
+                nt.set(k, expect_object(string, ++i, ctx));
             }
             else
             {

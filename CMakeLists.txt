@@ -87,4 +87,21 @@ install(EXPORT smallfolk_cppTargets
     DESTINATION ${CMAKE_INSTALL_LIBDIR}/cmake/smallfolk_cpp
 )
 
+include(CMakePackageConfigHelpers)
+write_basic_package_version_file(
+    "${CMAKE_CURRENT_BINARY_DIR}/smallfolk_cppConfigVersion.cmake"
+    VERSION ${PROJECT_VERSION}
+    COMPATIBILITY SameMajorVersion
+)
+configure_package_config_file(
+    "${CMAKE_CURRENT_SOURCE_DIR}/cmake/smallfolk_cppConfig.cmake.in"
+    "${CMAKE_CURRENT_BINARY_DIR}/smallfolk_cppConfig.cmake"
+    INSTALL_DESTINATION ${CMAKE_INSTALL_LIBDIR}/cmake/smallfolk_cpp
+)
+install(FILES
+    "${CMAKE_CURRENT_BINARY_DIR}/smallfolk_cppConfig.cmake"
+    "${CMAKE_CURRENT_BINARY_DIR}/smallfolk_cppConfigVersion.cmake"
+    DESTINATION ${CMAKE_INSTALL_LIBDIR}/cmake/smallfolk_cpp
+)
+
 smallfolk_add_static_analysis_targets()

@@ -29,6 +29,10 @@
 
 # Build directories
 build/
+build-*/
 bin/
 cmake-build-*/
 out/
+
+# Local scratch
+tmp_*.cpp
